@@ -6,9 +6,19 @@ import {
   ThumbsUp, MessageCircle, Share2, Flag, CheckCircle, Clock, Shield, 
   Filter, Plus, User, LogOut, ArrowLeft, Heart, Briefcase, Bell, 
   Calendar, Download, BarChart2, FileText, Smartphone, Camera, 
-  Award, ExternalLink, Globe, LayoutDashboard, Activity, CheckSquare, AlertOctagon,
-  Navigation, Edit, Trophy, Medal, Star, Zap, Mail, Info, BookOpen, PhoneCall, Copy
+  Award, ExternalLink, Globe, LayoutDashboard, Activity, CheckSquare, AlertOctagon, Video,
+  Navigation, Edit, Trophy, Medal, Star, Zap, Mail, Info, BookOpen, PhoneCall, Copy, Reply,
+  Facebook, Twitter, Link as LinkIcon
 } from 'lucide-react';
+import { createReport, fetchReports, mapReportRowToPost, updateReport, uploadEvidence } from './lib/reports';
+import { signIn, signOut, signUp, getCurrentUser, onAuthStateChange, updateMyProfile, listProfiles, signInWithProvider } from './lib/auth';
+import { listComments, createComment, updateComment as updateCommentRecord, deleteComment as deleteCommentRecord } from './lib/comments';
+import { toggleVote, toggleVouch, flagReport } from './lib/engagement';
+import { listChapters, createChapter, joinChapter, listMyChapterIds } from './lib/chapters';
+import { subscribe as subscribeAlerts, unsubscribe as unsubscribeAlerts, listSubscriptions } from './lib/alerts';
+import { listNotifications, createNotification } from './lib/notifications';
+import { listResourceLinks, DEFAULT_RESOURCES } from './lib/resources';
+import { deleteReportAdmin, verifyReportAdmin, resolveReportAdmin, updateUserStatusAdmin } from './lib/admin';
 
 /* -------------------------------------------------------------------------- */
 /* MOCK DATA & CONFIG                                 */
@@ -40,490 +50,19 @@ const STATES = [
   { id: 'GA', name: 'Goa', cities: ['Panaji'], coords: { x: 26, y: 72 }, geoCoords: [74.1240, 15.2993], severity: 'low', stats: { scam: 25, cleanliness: 15, bribe: 10, volunteer: 40 } },
 ];
 
-const INITIAL_POSTS = [
+const INITIAL_POSTS = [];
+const MOCK_USERS = [
   {
-    id: 1,
-    type: 'cleanliness',
-    title: 'Garbage pile up near Dadar Station West',
-    description: 'Huge pile of plastic and wet waste accumulating for 3 days. Blocking the footpath. Need urgent cleanup.',
-    location: 'Dadar West, Mumbai',
-    city: 'Mumbai',
-    state: 'Maharashtra',
-    author: 'Ravi K.',
-    authorId: 'user_123', // Mock ID to simulate ownership
-    badges: ['Verified Reporter'],
-    date: '2 hours ago',
-    status: 'Resolved',
-    trustScore: 'High',
-    vouchCount: 45,
-    upvotes: 45,
-    comments: [],
-    flags: 0,
-    tags: ['Garbage', 'Public Health'],
-    isVolunteerDrive: true,
-    eventDate: 'Oct 24, 2023',
-    eventTime: '8:00 AM',
-    volunteers: [1, 2, 3],
-    evidence: {
-      before: 'https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?auto=format&fit=crop&q=80&w=400',
-      after: 'https://images.unsplash.com/photo-1595278069441-2cf29f8005a4?auto=format&fit=crop&q=80&w=400' 
-    },
-    timeline: [
-      { status: 'Issue Reported', date: 'Oct 20, 10:00 AM', desc: 'Initial report filed with photos.' },
-      { status: 'Verified', date: 'Oct 20, 12:30 PM', desc: 'Confirmed by local moderator.' },
-      { status: 'Drive Scheduled', date: 'Oct 21, 09:00 AM', desc: 'Volunteer cleanup organized for Oct 24.' },
-      { status: 'Resolved', date: 'Oct 24, 02:00 PM', desc: 'Cleanup complete. 50kg waste removed.' }
-    ]
-  },
-  {
-    id: 2,
-    type: 'scam',
-    title: 'Fake Electricity Bill SMS Scam',
-    description: 'Received SMS claiming power cut unless KYC updated. Link asks for UPI PIN. Number: +91-98765XXXXX (Masked for safety).',
-    location: 'Indiranagar, Bengaluru',
-    city: 'Bengaluru',
-    state: 'Karnataka',
-    author: 'Priya S.',
-    authorId: 'user_456',
-    badges: ['City Hero'],
-    date: '1 day ago',
-    status: 'Action Taken',
-    trustScore: 'Med',
-    vouchCount: 12,
-    upvotes: 120,
-    comments: [{ id: 101, author: 'Admin', text: 'Thanks. Flagged.' }],
-    flags: 0,
-    tags: ['UPI Scam', 'Cyber Fraud'],
-    isVolunteerDrive: false,
-    evidence: null,
-    timeline: [
-      { status: 'Reported', date: 'Yesterday, 5:00 PM', desc: 'Suspicious SMS reported.' },
-      { status: 'Community Alert', date: 'Yesterday, 6:00 PM', desc: 'Marked as "High Risk" trend in Bengaluru.' },
-      { status: 'Reported to Authority', date: 'Today, 10:00 AM', desc: 'Details forwarded to Cyber Crime Portal via automated API.' }
-    ]
-  },
-  {
-    id: 3,
-    type: 'bribe',
-    title: 'Traffic Police Asking Bribe at Signal',
-    description: 'Stopped for no reason at the main signal. Officer demanded 500rs cash without issuing a challan. Badge number was covered.',
-    location: 'T. Nagar, Chennai',
-    city: 'Chennai',
-    state: 'Tamil Nadu',
-    author: 'Senthil M.',
-    authorId: 'user_789',
-    badges: ['Whistleblower'],
-    date: '3 hours ago',
-    status: 'Open',
-    trustScore: 'Med',
-    vouchCount: 8,
-    upvotes: 67,
-    comments: [],
-    flags: 0,
-    tags: ['Corruption', 'Traffic'],
-    isVolunteerDrive: false,
-    evidence: null,
-    timeline: [
-      { status: 'Reported', date: 'Today, 11:00 AM', desc: 'Incident reported anonymously.' }
-    ]
-  },
-  {
-    id: 4,
-    type: 'volunteer',
-    title: 'Yamuna Bank Cleanup Drive',
-    description: 'Join us this Sunday to clean the river banks near the old bridge. Gloves and bags provided. We need 50 volunteers!',
-    location: 'Yamuna Bank, Delhi',
+    id: 'admin_master',
+    name: 'Super Admin',
+    email: 'admin@indiaact.org',
+    role: 'admin',
+    status: 'active',
+    joinedDate: 'Jan 2024',
+    points: 10000,
     city: 'New Delhi',
-    state: 'Delhi NCR',
-    author: 'Green Delhi Team',
-    authorId: 'org_001',
-    badges: ['Community Leader'],
-    date: '5 hours ago',
-    status: 'Open',
-    trustScore: 'High',
-    vouchCount: 92,
-    upvotes: 150,
-    comments: [],
-    flags: 0,
-    tags: ['Environment', 'Volunteer'],
-    isVolunteerDrive: true,
-    eventDate: 'Oct 28, 2023',
-    eventTime: '7:00 AM',
-    volunteers: [10, 11, 12, 13, 14],
-    evidence: null,
-    timeline: [
-      { status: 'Announced', date: 'Today, 9:00 AM', desc: 'Drive scheduled.' }
-    ]
-  },
-  {
-    id: 5,
-    type: 'cleanliness',
-    title: 'Broken Sewage Pipe Leaking on Road',
-    description: 'Sewage water leaking onto the main road for 2 days. Smells terrible and is a health hazard for pedestrians.',
-    location: 'Salt Lake, Kolkata',
-    city: 'Kolkata',
-    state: 'West Bengal',
-    author: 'Anjali D.',
-    authorId: 'user_202',
-    badges: [],
-    date: '1 day ago',
-    status: 'Open',
-    trustScore: 'Low',
-    vouchCount: 3,
-    upvotes: 15,
-    comments: [],
-    flags: 0,
-    tags: ['Sanitation', 'Health'],
-    isVolunteerDrive: false,
-    evidence: null,
-    timeline: [
-      { status: 'Reported', date: 'Yesterday, 4:00 PM', desc: 'Issue reported.' }
-    ]
-  },
-  {
-    id: 6,
-    type: 'cleanliness',
-    title: 'Cleared Illegal Dump at Sector 5',
-    description: 'The massive garbage dump near the school has been completely cleared by the municipality after 500+ upvotes.',
-    location: 'Sector 5, Chandigarh',
-    city: 'Chandigarh',
-    state: 'Punjab',
-    author: 'Vikram S.',
-    authorId: 'user_999',
-    badges: ['Impact Maker'],
-    date: '1 week ago',
-    status: 'Resolved',
-    trustScore: 'High',
-    vouchCount: 150,
-    upvotes: 300,
-    comments: [],
-    flags: 0,
-    tags: ['Cleanliness', 'Success'],
-    isVolunteerDrive: false,
-    evidence: {
-      before: 'https://images.unsplash.com/photo-1580674684081-7617fbf3d745?auto=format&fit=crop&q=80&w=400',
-      after: 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&q=80&w=400'
-    },
-    timeline: [
-      { status: 'Resolved', date: 'Yesterday', desc: 'Area cleaned and fenced.' }
-    ]
-  },
-  {
-    id: 7,
-    type: 'cleanliness',
-    title: 'Fixed Dangerous Pothole on MG Road',
-    description: 'The deep pothole causing accidents near the metro station has been filled and resurfaced.',
-    location: 'MG Road, Bengaluru',
-    city: 'Bengaluru',
-    state: 'Karnataka',
-    author: 'Rahul V.',
-    authorId: 'user_101',
-    badges: ['Road Safety'],
-    date: '2 weeks ago',
-    status: 'Resolved',
-    trustScore: 'High',
-    vouchCount: 89,
-    upvotes: 210,
-    comments: [],
-    flags: 0,
-    tags: ['Roads', 'Safety'],
-    isVolunteerDrive: false,
-    evidence: {
-      before: 'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?auto=format&fit=crop&q=80&w=400',
-      after: 'https://images.unsplash.com/photo-1584463635346-9f578e4b453c?auto=format&fit=crop&q=80&w=400'
-    },
-    timeline: [
-      { status: 'Resolved', date: 'Oct 15', desc: 'Road resurfaced by BBMP.' }
-    ]
-  },
-  {
-    id: 8,
-    type: 'volunteer',
-    title: 'Restored Community Park in Pune',
-    description: 'Over 50 volunteers came together to paint fences, plant saplings, and clean the jogging track.',
-    location: 'Koregaon Park, Pune',
-    city: 'Pune',
-    state: 'Maharashtra',
-    author: 'Pune Cares',
-    authorId: 'org_002',
-    badges: ['Community Win'],
-    date: '3 weeks ago',
-    status: 'Resolved',
-    trustScore: 'High',
-    vouchCount: 120,
-    upvotes: 350,
-    comments: [],
-    flags: 0,
-    tags: ['Environment', 'Park'],
-    isVolunteerDrive: true,
-    evidence: {
-      before: 'https://images.unsplash.com/photo-1558618047-f4b511aae74d?auto=format&fit=crop&q=80&w=400',
-      after: 'https://images.unsplash.com/photo-1466692476868-aef1dfb1e735?auto=format&fit=crop&q=80&w=400'
-    },
-    timeline: [
-      { status: 'Resolved', date: 'Oct 10', desc: 'Park restoration complete.' }
-    ]
-  },
-  {
-    id: 9,
-    type: 'cleanliness',
-    title: 'Cleared Garbage Dump at Beach',
-    description: 'Weekly cleanup drive resulted in removal of 200kg of plastic waste from the shoreline.',
-    location: 'Marina Beach, Chennai',
-    city: 'Chennai',
-    state: 'Tamil Nadu',
-    author: 'Clean Coast Org',
-    authorId: 'org_003',
-    badges: ['Eco Warrior'],
-    date: '1 month ago',
-    status: 'Resolved',
-    trustScore: 'High',
-    vouchCount: 200,
-    upvotes: 450,
-    comments: [],
-    flags: 0,
-    tags: ['Beach', 'Plastic'],
-    isVolunteerDrive: true,
-    evidence: {
-      before: 'https://images.unsplash.com/photo-1618477461853-5f8dd37a79a3?auto=format&fit=crop&q=80&w=400',
-      after: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&q=80&w=400'
-    },
-    timeline: [
-      { status: 'Resolved', date: 'Sep 25', desc: 'Beach cleanup successful.' }
-    ]
-  },
-  {
-    id: 10,
-    type: 'bribe',
-    title: 'Street Lights Fixed in Alley',
-    description: 'After months of darkness and safety concerns, new LED lights have been installed.',
-    location: 'Civil Lines, Delhi',
-    city: 'New Delhi',
-    state: 'Delhi NCR',
-    author: 'Amit S.',
-    authorId: 'user_555',
-    badges: ['Safety First'],
-    date: '1 month ago',
-    status: 'Resolved',
-    trustScore: 'High',
-    vouchCount: 45,
-    upvotes: 90,
-    comments: [],
-    flags: 0,
-    tags: ['Infrastructure', 'Safety'],
-    isVolunteerDrive: false,
-    evidence: {
-      before: 'https://images.unsplash.com/photo-1510265119258-db115b0e8172?auto=format&fit=crop&q=80&w=400',
-      after: 'https://images.unsplash.com/photo-1562619425-c307bb83bc42?auto=format&fit=crop&q=80&w=400'
-    },
-    timeline: [
-      { status: 'Resolved', date: 'Sep 20', desc: 'Lights installed by municipality.' }
-    ]
-  },
-  {
-    id: 11,
-    type: 'cleanliness',
-    title: 'Removed Illegal Hoardings',
-    description: 'Illegal political banners blocking traffic signals were removed following citizen reports.',
-    location: 'Bandra, Mumbai',
-    city: 'Mumbai',
-    state: 'Maharashtra',
-    author: 'Citizen Watch',
-    authorId: 'user_777',
-    badges: ['Civic Duty'],
-    date: '2 months ago',
-    status: 'Resolved',
-    trustScore: 'High',
-    vouchCount: 60,
-    upvotes: 130,
-    comments: [],
-    flags: 0,
-    tags: ['Traffic', 'Visual Pollution'],
-    isVolunteerDrive: false,
-    evidence: {
-      before: 'https://images.unsplash.com/photo-1572062505068-4f562e15708f?auto=format&fit=crop&q=80&w=400',
-      after: 'https://images.unsplash.com/photo-1575356895660-297296291665?auto=format&fit=crop&q=80&w=400'
-    },
-    timeline: [
-      { status: 'Resolved', date: 'Aug 15', desc: 'Hoardings removed.' }
-    ]
-  },
-  {
-    id: 6,
-    type: 'cleanliness',
-    title: 'Cleared Illegal Dump at Sector 5',
-    description: 'The massive garbage dump near the school has been completely cleared by the municipality after 500+ upvotes.',
-    location: 'Sector 5, Chandigarh',
-    city: 'Chandigarh',
-    state: 'Punjab',
-    author: 'Vikram S.',
-    authorId: 'user_999',
-    badges: ['Impact Maker'],
-    date: '1 week ago',
-    status: 'Resolved',
-    trustScore: 'High',
-    vouchCount: 150,
-    upvotes: 300,
-    comments: [],
-    flags: 0,
-    tags: ['Cleanliness', 'Success'],
-    isVolunteerDrive: false,
-    evidence: {
-      before: 'https://images.unsplash.com/photo-1580674684081-7617fbf3d745?auto=format&fit=crop&q=80&w=400',
-      after: 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&q=80&w=400'
-    },
-    timeline: [
-      { status: 'Resolved', date: 'Yesterday', desc: 'Area cleaned and fenced.' }
-    ]
-  },
-  {
-    id: 7,
-    type: 'cleanliness',
-    title: 'Fixed Dangerous Pothole on MG Road',
-    description: 'The deep pothole causing accidents near the metro station has been filled and resurfaced.',
-    location: 'MG Road, Bengaluru',
-    city: 'Bengaluru',
-    state: 'Karnataka',
-    author: 'Rahul V.',
-    authorId: 'user_101',
-    badges: ['Road Safety'],
-    date: '2 weeks ago',
-    status: 'Resolved',
-    trustScore: 'High',
-    vouchCount: 89,
-    upvotes: 210,
-    comments: [],
-    flags: 0,
-    tags: ['Roads', 'Safety'],
-    isVolunteerDrive: false,
-    evidence: {
-      before: 'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?auto=format&fit=crop&q=80&w=400',
-      after: 'https://images.unsplash.com/photo-1584463635346-9f578e4b453c?auto=format&fit=crop&q=80&w=400'
-    },
-    timeline: [
-      { status: 'Resolved', date: 'Oct 15', desc: 'Road resurfaced by BBMP.' }
-    ]
-  },
-  {
-    id: 8,
-    type: 'volunteer',
-    title: 'Restored Community Park in Pune',
-    description: 'Over 50 volunteers came together to paint fences, plant saplings, and clean the jogging track.',
-    location: 'Koregaon Park, Pune',
-    city: 'Pune',
-    state: 'Maharashtra',
-    author: 'Pune Cares',
-    authorId: 'org_002',
-    badges: ['Community Win'],
-    date: '3 weeks ago',
-    status: 'Resolved',
-    trustScore: 'High',
-    vouchCount: 120,
-    upvotes: 350,
-    comments: [],
-    flags: 0,
-    tags: ['Environment', 'Park'],
-    isVolunteerDrive: true,
-    evidence: {
-      before: 'https://images.unsplash.com/photo-1558618047-f4b511aae74d?auto=format&fit=crop&q=80&w=400',
-      after: 'https://images.unsplash.com/photo-1466692476868-aef1dfb1e735?auto=format&fit=crop&q=80&w=400'
-    },
-    timeline: [
-      { status: 'Resolved', date: 'Oct 10', desc: 'Park restoration complete.' }
-    ]
-  },
-  {
-    id: 9,
-    type: 'cleanliness',
-    title: 'Cleared Garbage Dump at Beach',
-    description: 'Weekly cleanup drive resulted in removal of 200kg of plastic waste from the shoreline.',
-    location: 'Marina Beach, Chennai',
-    city: 'Chennai',
-    state: 'Tamil Nadu',
-    author: 'Clean Coast Org',
-    authorId: 'org_003',
-    badges: ['Eco Warrior'],
-    date: '1 month ago',
-    status: 'Resolved',
-    trustScore: 'High',
-    vouchCount: 200,
-    upvotes: 450,
-    comments: [],
-    flags: 0,
-    tags: ['Beach', 'Plastic'],
-    isVolunteerDrive: true,
-    evidence: {
-      before: 'https://images.unsplash.com/photo-1618477461853-5f8dd37a79a3?auto=format&fit=crop&q=80&w=400',
-      after: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&q=80&w=400'
-    },
-    timeline: [
-      { status: 'Resolved', date: 'Sep 25', desc: 'Beach cleanup successful.' }
-    ]
-  },
-  {
-    id: 10,
-    type: 'bribe',
-    title: 'Street Lights Fixed in Alley',
-    description: 'After months of darkness and safety concerns, new LED lights have been installed.',
-    location: 'Civil Lines, Delhi',
-    city: 'New Delhi',
-    state: 'Delhi NCR',
-    author: 'Amit S.',
-    authorId: 'user_555',
-    badges: ['Safety First'],
-    date: '1 month ago',
-    status: 'Resolved',
-    trustScore: 'High',
-    vouchCount: 45,
-    upvotes: 90,
-    comments: [],
-    flags: 0,
-    tags: ['Infrastructure', 'Safety'],
-    isVolunteerDrive: false,
-    evidence: {
-      before: 'https://images.unsplash.com/photo-1510265119258-db115b0e8172?auto=format&fit=crop&q=80&w=400',
-      after: 'https://images.unsplash.com/photo-1562619425-c307bb83bc42?auto=format&fit=crop&q=80&w=400'
-    },
-    timeline: [
-      { status: 'Resolved', date: 'Sep 20', desc: 'Lights installed by municipality.' }
-    ]
-  },
-  {
-    id: 11,
-    type: 'cleanliness',
-    title: 'Removed Illegal Hoardings',
-    description: 'Illegal political banners blocking traffic signals were removed following citizen reports.',
-    location: 'Bandra, Mumbai',
-    city: 'Mumbai',
-    state: 'Maharashtra',
-    author: 'Citizen Watch',
-    authorId: 'user_777',
-    badges: ['Civic Duty'],
-    date: '2 months ago',
-    status: 'Resolved',
-    trustScore: 'High',
-    vouchCount: 60,
-    upvotes: 130,
-    comments: [],
-    flags: 0,
-    tags: ['Traffic', 'Visual Pollution'],
-    isVolunteerDrive: false,
-    evidence: {
-      before: 'https://images.unsplash.com/photo-1572062505068-4f562e15708f?auto=format&fit=crop&q=80&w=400',
-      after: 'https://images.unsplash.com/photo-1575356895660-297296291665?auto=format&fit=crop&q=80&w=400'
-    },
-    timeline: [
-      { status: 'Resolved', date: 'Aug 15', desc: 'Hoardings removed.' }
-    ]
+    phone: '9999999999'
   }
-];
-
-const INITIAL_CHAPTERS = [
-  { id: 'c1', name: 'IIT Bombay Social Service', type: 'College', city: 'Mumbai', members: 1240, drives: 45, score: 15400, verified: true, color: 'from-blue-500 to-cyan-500' },
-  { id: 'c2', name: 'Delhi Univ. Civic Corps', type: 'College', city: 'New Delhi', members: 2100, drives: 89, score: 28900, verified: true, color: 'from-purple-500 to-pink-500' },
-  { id: 'c3', name: 'Palm Grove RWA', type: 'Society', city: 'Bengaluru', members: 350, drives: 12, score: 5400, verified: true, color: 'from-orange-500 to-red-500' },
-  { id: 'c4', name: 'St. Xaviers Green Club', type: 'College', city: 'Mumbai', members: 850, drives: 32, score: 11200, verified: true, color: 'from-green-500 to-emerald-500' },
-  { id: 'c5', name: 'Koramangala 4th Block', type: 'Society', city: 'Bengaluru', members: 500, drives: 18, score: 7800, verified: true, color: 'from-teal-500 to-green-500' },
 ];
 
 const BADGE_DEFINITIONS = [
@@ -534,16 +73,8 @@ const BADGE_DEFINITIONS = [
   { id: 'leader', label: 'Community Leader', icon: Users, desc: 'Organized 5 Drives', color: 'text-purple-600 bg-purple-50', border: 'border-purple-100' },
 ];
 
-const MONTHLY_HEROES = [
-  { id: 1, name: 'Ravi Kumar', points: 1250, badge: 'City Hero', avatar: 'bg-yellow-100 text-yellow-700', location: 'Mumbai' },
-  { id: 2, name: 'Priya Sharma', points: 980, badge: 'Eco Warrior', avatar: 'bg-green-100 text-green-700', location: 'Bengaluru' },
-  { id: 3, name: 'Amit Singh', points: 850, badge: 'Verified Reporter', avatar: 'bg-blue-100 text-blue-700', location: 'Delhi' },
-];
-
-const IMPROVED_AREAS = [
-  { name: 'Dadar West', city: 'Mumbai', improvement: '+45%', metric: 'Cleanliness Score', prev: 42, curr: 87, color: 'text-emerald-600' },
-  { name: 'Indiranagar', city: 'Bengaluru', improvement: '+30%', metric: 'Pothole Fixes', prev: 20, curr: 50, color: 'text-blue-600' },
-];
+const MONTHLY_HEROES = [];
+const IMPROVED_AREAS = [];
 
 const CATEGORIES = [
   { id: 'scam', label: 'Scam Alert', icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-200' },
@@ -552,40 +83,9 @@ const CATEGORIES = [
   { id: 'volunteer', label: 'Volunteer Drive', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200' },
 ];
 
-const RESOURCES = [
-  { title: 'Cyber Crime Portal', desc: 'File official cyber fraud complaints', link: '#' },
-  { title: 'RTI Online', desc: 'File a Right to Information request', link: '#' },
-  { title: 'Swachh Bharat App', desc: 'Official government cleaning app', link: '#' },
-];
-
 // Helper to generate mock drill-down data
-const getDrillDownItems = (level, region) => {
+const getDrillDownItems = (level) => {
   if (level === 'country') return STATES;
-  
-  if (level === 'state') {
-    // region is the state object
-    return region.cities.map((city, i) => ({
-      id: city,
-      name: city,
-      geoCoords: [region.geoCoords[0] + (Math.random() - 0.5) * 2, region.geoCoords[1] + (Math.random() - 0.5) * 2],
-      coords: { x: 20 + (i * 18) % 60, y: 20 + (i * 12) % 60 }, // Pseudo-random spread
-      severity: ['high', 'med', 'low'][i % 3],
-      stats: region.stats
-    }));
-  }
-  
-  if (level === 'city') {
-    // region is the city object
-    const areas = ['Downtown', 'North Dist', 'South Ext', 'East Block', 'West End', 'Central', 'Tech Hub'];
-    return areas.map((area, i) => ({
-      id: `${region.name}-${area}`,
-      name: area,
-      geoCoords: [region.geoCoords[0] + (Math.random() - 0.5) * 0.5, region.geoCoords[1] + (Math.random() - 0.5) * 0.5],
-      coords: { x: 30 + (i * 15) % 50, y: 25 + (i * 15) % 50 },
-      severity: ['high', 'med', 'low'][(i * 2) % 3],
-      stats: { scam: 12, cleanliness: 34, bribe: 5, volunteer: 10 }
-    }));
-  }
   return [];
 };
 
@@ -741,6 +241,31 @@ const getTrustScore = (vouchCount, evidence) => {
   return 'Low';
 };
 
+const Spinner = ({ size = 20, className = '' }) => (
+  <svg
+    className={`animate-spin ${className}`}
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+    width={size}
+    height={size}
+  >
+    <circle
+      className="opacity-25"
+      cx="12"
+      cy="12"
+      r="10"
+      stroke="currentColor"
+      strokeWidth="4"
+    ></circle>
+    <path
+      className="opacity-75"
+      fill="currentColor"
+      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+    ></path>
+  </svg>
+);
+
 /* -------------------------------------------------------------------------- */
 /* SHARED COMPONENTS                                                          */
 /* -------------------------------------------------------------------------- */
@@ -759,8 +284,8 @@ const FeatureInfo = ({ title, content, className = "" }) => {
       </button>
       {show && (
         <>
-          <div className="fixed inset-0 z-[100] bg-black/20 backdrop-blur-sm" onClick={(e) => { e.stopPropagation(); setShow(false); }}></div>
-          <div className="fixed left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[101] w-[90vw] max-w-xs bg-white rounded-2xl shadow-2xl border border-gray-100 p-6 animate-in fade-in zoom-in-95 text-left">
+          <div className="fixed inset-0 z-100 bg-black/20 backdrop-blur-sm" onClick={(e) => { e.stopPropagation(); setShow(false); }}></div>
+          <div className="fixed left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-101 w-[90vw] max-w-xs bg-white rounded-2xl shadow-2xl border border-gray-100 p-6 animate-in fade-in zoom-in-95 text-left">
              <div className="flex justify-between items-start mb-3">
                <h4 className="font-bold text-[#1d1d1f] text-base flex items-center gap-2">
                  <Info size={18} className="text-[#0071e3]" /> {title}
@@ -781,7 +306,7 @@ const Badge = ({ children, className }) => (
   </span>
 );
 
-const Button = ({ children, onClick, variant = 'primary', className = '', icon: Icon, disabled = false }) => {
+const Button = ({ children, onClick, variant = 'primary', className = '', icon: Icon, disabled = false, loading = false }) => {
   const baseStyle = "flex items-center justify-center gap-2 px-6 py-2.5 rounded-full font-medium transition-all duration-300 active:scale-95 disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed text-sm tracking-tight";
   const variants = {
     primary: "bg-[#0071e3] text-white hover:bg-[#0077ed] shadow-sm",
@@ -792,15 +317,16 @@ const Button = ({ children, onClick, variant = 'primary', className = '', icon: 
     whatsapp: "bg-[#25D366] text-white hover:bg-[#128C7E]"
   };
   return (
-    <button onClick={onClick} className={`${baseStyle} ${variants[variant]} ${className}`} disabled={disabled}>
-      {Icon && <Icon size={18} />}
+    <button onClick={onClick} className={`${baseStyle} ${variants[variant]} ${className}`} disabled={disabled || loading}>
+      {loading && <Spinner size={18} />}
+      {!loading && Icon && <Icon size={18} />}
       {children}
     </button>
   );
 };
 
 const Toast = ({ message, type = 'success', onClose }) => (
-  <div className={`fixed bottom-6 right-6 px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-bounce-in z-[100] backdrop-blur-md
+  <div className={`fixed bottom-6 right-6 px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-bounce-in z-100 backdrop-blur-md
     ${type === 'error' ? 'bg-red-900 text-white' : 'bg-gray-900 text-white'}`}>
     <div className={`${type === 'error' ? 'bg-red-500' : 'bg-green-500'} rounded-full p-1`}>
       {type === 'error' ? <AlertTriangle size={16} /> : <CheckCircle size={16} />}
@@ -810,6 +336,15 @@ const Toast = ({ message, type = 'success', onClose }) => (
   </div>
 );
 
+const GlobalBanner = ({ message }) => {
+  if (!message) return null;
+  return (
+    <div className="bg-indigo-600 text-white text-center py-2 px-4 text-sm font-medium animate-in slide-in-from-top">
+      <span className="inline-block mr-2">📢</span> {message}
+    </div>
+  );
+};
+
 const CivicResourcesPage = () => {
   const [selectedCity, setSelectedCity] = useState('New Delhi');
   const [activeCategory, setActiveCategory] = useState('scam');
@@ -818,24 +353,26 @@ const CivicResourcesPage = () => {
   const categoryData = CIVIC_DATA.categories[activeCategory];
 
   return (
-    <div className="max-w-[980px] mx-auto py-12 px-6">
+    <div className="max-w-245 mx-auto py-12 px-6">
        {/* Motivational Banner */}
-       <div className="bg-gradient-to-r from-[#1d1d1f] to-[#434344] rounded-[30px] p-8 md:p-12 text-white mb-12 relative overflow-hidden shadow-2xl">
+       <div className="p-0.75 rounded-4xl bg-linear-to-r from-orange-500 via-white to-green-500 mb-12 shadow-2xl">
+       <div className="bg-linear-to-r from-[#1d1d1f] to-[#434344] rounded-[30px] p-8 md:p-12 text-white relative overflow-hidden h-full">
           <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16"></div>
           <div className="relative z-10 max-w-3xl">
              <Badge className="bg-white/20 text-white border-none mb-6 backdrop-blur-md">Be The Change</Badge>
              <h1 className="text-3xl md:text-5xl font-bold mb-6 leading-tight tracking-tight">
-                Nobody is coming to save us.<br/>
-                <span className="text-blue-300">We have to save ourselves.</span>
+                We have to fix our own problems.<br/>
+                <span className="text-blue-300">No one else will do it for us.</span>
              </h1>
-             <p className="text-lg md:text-xl text-gray-300 font-medium leading-relaxed">It's time to stop complaining and start acting. Your country needs you. Your city needs you. Stand up, speak out, and let's build a cleaner, safer world together. The power is in your hands.</p>
+             <p className="text-lg md:text-xl text-gray-300 font-medium leading-relaxed">Stop complaining and start acting. Your country needs you. Your city needs you. Stand up, speak out, and let's build a cleaner, safer world together.</p>
           </div>
+       </div>
        </div>
 
        {/* Header */}
        <div className="mb-10">
-         <h1 className="text-3xl font-bold text-[#1d1d1f] mb-2">Civic Resources & Action Guide</h1>
-         <p className="text-[#86868b]">Everything you need to know to take official action.</p>
+         <h1 className="text-3xl font-bold text-[#1d1d1f] mb-2">Helpful Resources & Guide</h1>
+         <p className="text-[#86868b]">What you need to know to take action.</p>
        </div>
 
        {/* Emergency Numbers */}
@@ -853,7 +390,7 @@ const CivicResourcesPage = () => {
          <h2 className="text-xl font-bold text-[#1d1d1f] mb-6">Know Your Rights</h2>
          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
            {CIVIC_DATA.knowYourRights.map(section => (
-             <div key={section.title} className="bg-white p-6 rounded-[24px] border border-gray-100 shadow-sm">
+             <div key={section.title} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
                <div className="flex items-center gap-3 mb-4">
                  <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
                    <section.icon size={20} className="text-gray-600" />
@@ -878,7 +415,7 @@ const CivicResourcesPage = () => {
          <h2 className="text-xl font-bold text-[#1d1d1f] mb-6">Essential Safety Tips</h2>
          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
            {CIVIC_DATA.safetyTips.map(section => (
-             <div key={section.title} className="bg-blue-50 p-6 rounded-[24px] border border-blue-100 shadow-sm">
+             <div key={section.title} className="bg-blue-50 p-6 rounded-3xl border border-blue-100 shadow-sm">
                <div className="flex items-center gap-3 mb-4">
                  <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-blue-600 shadow-sm">
                    <section.icon size={20} />
@@ -921,7 +458,7 @@ const CivicResourcesPage = () => {
 
           {/* Content Area */}
           <div className="lg:col-span-2">
-             <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 min-h-[400px]">
+             <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 min-h-100">
                 {activeCategory === 'rti' ? (
                    <div>
                       <h3 className="text-2xl font-bold text-[#1d1d1f] mb-4 flex items-center gap-2">
@@ -944,7 +481,7 @@ const CivicResourcesPage = () => {
                             <ul className="space-y-3">
                                {categoryData.steps.map((step, i) => (
                                   <li key={i} className="flex gap-3 text-sm text-[#86868b]">
-                                     <span className="flex-shrink-0 w-6 h-6 bg-[#e8e8ed] text-[#1d1d1f] rounded-full flex items-center justify-center text-xs font-bold">{i + 1}</span>
+                                     <span className="shrink-0 w-6 h-6 bg-[#e8e8ed] text-[#1d1d1f] rounded-full flex items-center justify-center text-xs font-bold">{i + 1}</span>
                                      {step}
                                   </li>
                                ))}
@@ -997,19 +534,19 @@ const CivicResourcesPage = () => {
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-             <div className="bg-white p-5 rounded-[24px] border border-gray-100 shadow-sm">
+             <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
                 <div className="text-xs font-bold text-[#86868b] uppercase mb-1">Police</div>
                 <div className="text-lg font-mono font-bold text-[#1d1d1f]">{cityData.police}</div>
              </div>
-             <div className="bg-white p-5 rounded-[24px] border border-gray-100 shadow-sm">
+             <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
                 <div className="text-xs font-bold text-[#86868b] uppercase mb-1">Disaster Mgmt</div>
                 <div className="text-lg font-mono font-bold text-[#1d1d1f]">{cityData.disaster}</div>
              </div>
-             <div className="bg-white p-5 rounded-[24px] border border-gray-100 shadow-sm">
+             <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
                 <div className="text-xs font-bold text-[#86868b] uppercase mb-1">Municipal Corp</div>
                 <div className="text-lg font-mono font-bold text-[#1d1d1f]">{cityData.municipal}</div>
              </div>
-             <div className="bg-white p-5 rounded-[24px] border border-gray-100 shadow-sm">
+             <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
                 <div className="text-xs font-bold text-[#86868b] uppercase mb-1">Cyber Crime</div>
                 <div className="text-lg font-mono font-bold text-[#1d1d1f]">{cityData.cyber}</div>
              </div>
@@ -1124,7 +661,7 @@ const IndiaMapVisual = ({ items, onRegionSelect, filter, heatmapMode, level, foc
   const mapZoom = level === 'country' ? 5 : level === 'state' ? 7 : 10;
 
   return (
-    <div className="relative w-full aspect-[4/3] bg-slate-100 rounded-[30px] overflow-hidden border border-gray-200 shadow-inner z-0">
+    <div className="relative w-full aspect-4/3 bg-slate-100 rounded-[30px] overflow-hidden border border-gray-200 shadow-inner z-0">
       {/* Inline style to force Leaflet container height */}
       <style>{`.leaflet-container { height: 100%; width: 100%; background: transparent; }`}</style>
       
@@ -1182,89 +719,140 @@ const IndiaMapVisual = ({ items, onRegionSelect, filter, heatmapMode, level, foc
   );
 };
 
+const BrandLogo = ({ size = 'md', className = '' }) => {
+  const [loadError, setLoadError] = useState(false);
+  const sizeClass = size === 'sm' ? 'h-12' : size === 'lg' ? 'h-28' : 'h-16';
+
+  if (loadError) {
+    return (
+      <div className={`font-bold tracking-tight text-gray-900 ${className}`}>
+        ACT INDIA
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src="/act-india-logo.png"
+      alt="Act India logo"
+      className={`${sizeClass} w-auto object-contain mix-blend-multiply ${className}`}
+      onError={() => setLoadError(true)}
+    />
+  );
+};
+
 // Navbar
-const Navbar = ({ onViewChange, currentView, user, onLoginClick, onLogout, notifications, showNotifications, setShowNotifications }) => (
-  <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-gray-200/50 transition-all duration-300">
-    <div className="max-w-[980px] mx-auto px-4 h-12 flex items-center justify-between">
-      <div className="flex items-center gap-2 cursor-pointer" onClick={() => onViewChange('home')}>
-        <Shield size={18} className="text-[#1d1d1f]" fill="currentColor" />
-        <span className="text-lg font-semibold tracking-tight text-[#1d1d1f]">IndiaAct</span>
-      </div>
+const Navbar = ({ onViewChange, currentView, user, onLoginClick, notifications, showNotifications, setShowNotifications }) => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-      <div className="hidden md:flex items-center gap-8 text-xs font-normal text-[#1d1d1f]/80">
-        <button onClick={() => onViewChange('home')} className={`transition-colors hover:text-[#1d1d1f] ${currentView === 'home' ? 'text-[#1d1d1f] font-medium' : ''}`}>Home</button>
-        <button onClick={() => onViewChange('explore')} className={`transition-colors hover:text-[#1d1d1f] ${currentView === 'explore' ? 'text-[#1d1d1f] font-medium' : ''}`}>Map</button>
-        <button onClick={() => onViewChange('chapters')} className={`transition-colors hover:text-[#1d1d1f] ${currentView === 'chapters' ? 'text-[#1d1d1f] font-medium' : ''}`}>Chapters</button>
-        <button onClick={() => onViewChange('leaderboard')} className={`transition-colors hover:text-[#1d1d1f] ${currentView === 'leaderboard' ? 'text-[#1d1d1f] font-medium' : ''}`}>Leaderboard</button>
-        <button onClick={() => onViewChange('impact')} className={`transition-colors hover:text-[#1d1d1f] ${currentView === 'impact' ? 'text-[#1d1d1f] font-medium' : ''}`}>Impact</button>
-        <button onClick={() => onViewChange('resources')} className={`transition-colors hover:text-[#1d1d1f] ${currentView === 'resources' ? 'text-[#1d1d1f] font-medium' : ''}`}>Resources</button>
-      </div>
-
-      <div className="flex items-center gap-3">
-        {/* Restored Language Selector */}
-        <button className="hidden sm:flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-900 px-2 py-1 rounded hover:bg-gray-100">
-          <Globe size={14} /> EN
-        </button>
-
-        {user && (
-          <div className="relative">
-            <button className="p-2 hover:bg-gray-100 rounded-full text-gray-600 relative transition-colors" onClick={() => setShowNotifications(!showNotifications)}>
-              <Bell size={20} />
-              {notifications.some(n => !n.read) && <span className="absolute top-1.5 right-2 w-2 h-2 bg-red-500 rounded-full border border-white"></span>}
-            </button>
-            {showNotifications && (
-              <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-100 py-2 overflow-hidden z-[60] animate-in fade-in slide-in-from-top-2">
-                <div className="px-4 py-2 border-b border-gray-50 flex justify-between items-center">
-                  <h3 className="font-semibold text-sm">Notifications</h3>
-                </div>
-                <div className="max-h-64 overflow-y-auto">
-                  {notifications.length > 0 ? notifications.map(n => (
-                    <div key={n.id} className={`px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors ${!n.read ? 'bg-blue-50/50' : ''}`}>
-                      <p className="text-sm text-gray-800 leading-snug mb-1">{n.text}</p>
-                      <p className="text-xs text-gray-400">{n.time}</p>
-                    </div>
-                  )) : <div className="p-8 text-center text-gray-400 text-sm">No new alerts.</div>}
-                </div>
-              </div>
-            )}
+  return (
+    <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-gray-200/50 transition-all duration-300">
+      <div className="max-w-245 mx-auto px-4 h-16 md:h-[72px] flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button 
+            className="md:hidden p-2 -ml-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+          >
+            {isMenuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+          <div className="flex items-center cursor-pointer" onClick={() => onViewChange('home')}>
+            <BrandLogo size="sm" />
           </div>
-        )}
-        
-        {user ? (
-          <div className="flex items-center gap-2 pl-2 border-l border-gray-200">
-            <button onClick={() => onViewChange('dashboard')} className="w-8 h-8 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-bold text-xs ring-2 ring-white shadow-sm hover:ring-blue-200 transition-all">
-              {user.name.charAt(0)}
-            </button>
-            {/* Logout is now also available in dashboard, but keeping here for quick access if needed, or we can remove it to clean up navbar */}
-          </div>
-        ) : (
-          <Button variant="secondary" onClick={onLoginClick} className="!py-1 !px-3 text-xs">Login</Button>
-        )}
-        <Button variant="primary" onClick={() => onViewChange('create')} className="hidden md:flex !py-1 !px-3 text-xs" icon={Plus}>Report</Button>
+        </div>
+
+        <div className="hidden md:flex items-center gap-8 text-xs font-normal text-[#1d1d1f]/80">
+          <button onClick={() => onViewChange('home')} className={`transition-colors hover:text-[#1d1d1f] ${currentView === 'home' ? 'text-[#1d1d1f] font-medium' : ''}`}>Home</button>
+          <button onClick={() => onViewChange('explore')} className={`transition-colors hover:text-[#1d1d1f] ${currentView === 'explore' ? 'text-[#1d1d1f] font-medium' : ''}`}>Map</button>
+          <button onClick={() => onViewChange('chapters')} className={`transition-colors hover:text-[#1d1d1f] ${currentView === 'chapters' ? 'text-[#1d1d1f] font-medium' : ''}`}>Chapters</button>
+          <button onClick={() => onViewChange('leaderboard')} className={`transition-colors hover:text-[#1d1d1f] ${currentView === 'leaderboard' ? 'text-[#1d1d1f] font-medium' : ''}`}>Leaderboard</button>
+          <button onClick={() => onViewChange('impact')} className={`transition-colors hover:text-[#1d1d1f] ${currentView === 'impact' ? 'text-[#1d1d1f] font-medium' : ''}`}>Impact</button>
+          <button onClick={() => onViewChange('resources')} className={`transition-colors hover:text-[#1d1d1f] ${currentView === 'resources' ? 'text-[#1d1d1f] font-medium' : ''}`}>Resources</button>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button className="hidden sm:flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-900 px-2 py-1 rounded hover:bg-gray-100">
+            <Globe size={14} /> EN
+          </button>
+
+          {user && (
+            <div className="relative">
+              <button className="p-2 hover:bg-gray-100 rounded-full text-gray-600 relative transition-colors" onClick={() => setShowNotifications(!showNotifications)}>
+                <Bell size={20} />
+                {notifications.some(n => !n.read) && <span className="absolute top-1.5 right-2 w-2 h-2 bg-red-500 rounded-full border border-white"></span>}
+              </button>
+              {showNotifications && (
+                <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-100 py-2 overflow-hidden z-60 animate-in fade-in slide-in-from-top-2">
+                  <div className="px-4 py-2 border-b border-gray-50 flex justify-between items-center">
+                    <h3 className="font-semibold text-sm">Notifications</h3>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto">
+                    {notifications.length > 0 ? notifications.map(n => (
+                      <div key={n.id} className={`px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors ${!n.read ? 'bg-blue-50/50' : ''}`}>
+                        <p className="text-sm text-gray-800 leading-snug mb-1">{n.text}</p>
+                        <p className="text-xs text-gray-400">{n.time}</p>
+                      </div>
+                    )) : <div className="p-8 text-center text-gray-400 text-sm">No new alerts.</div>}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {user ? (
+            <div className="flex items-center gap-2 pl-2 border-l border-gray-200">
+              <button onClick={() => onViewChange('dashboard')} className="w-8 h-8 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-bold text-xs ring-2 ring-white shadow-sm hover:ring-blue-200 transition-all">
+                {user.name.charAt(0)}
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" onClick={onLoginClick} className="py-1! px-3! text-xs">Login</Button>
+              <Button variant="primary" onClick={() => onViewChange('signup')} className="py-1! px-3! text-xs">Sign Up</Button>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
-  </nav>
-);
+
+      {/* Mobile Menu */}
+      {isMenuOpen && (
+        <div className="md:hidden absolute top-full left-0 w-full bg-white/95 backdrop-blur-xl border-b border-gray-200 shadow-xl z-40 animate-in slide-in-from-top-5">
+          <div className="flex flex-col p-4 space-y-2">
+            {['home', 'explore', 'chapters', 'leaderboard', 'impact', 'resources'].map((item) => (
+              <button 
+                key={item}
+                onClick={() => { onViewChange(item); setIsMenuOpen(false); }}
+                className={`text-left px-4 py-3 rounded-xl text-sm font-medium transition-all duration-300 ease-in-out capitalize ${currentView === item ? 'bg-blue-50 text-blue-700 translate-x-2 shadow-sm' : 'text-gray-600 hover:bg-gray-50 hover:translate-x-1'}`}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </nav>
+  );
+};
 
 // Hero Component
 const Hero = ({ onViewChange }) => (
-  <div className="max-w-[980px] mx-auto py-12 px-6">
-    <div className="bg-[#1d1d1f] rounded-[30px] p-10 md:p-16 text-white text-center relative overflow-hidden mb-12">
+  <div className="max-w-245 mx-auto py-12 px-6">
+    <div className="p-0.75 rounded-4xl bg-linear-to-r from-orange-500 via-white to-green-500 mb-12 shadow-2xl">
+      <div className="bg-[#1d1d1f] rounded-[30px] p-10 md:p-16 text-white text-center relative overflow-hidden h-full">
       {/* Background decoration */}
       <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
       <div className="absolute bottom-0 left-0 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl -ml-20 -mb-20"></div>
       
       <div className="relative z-10">
         <Badge className="bg-blue-500/20 text-blue-300 border-none mb-6 inline-flex items-center gap-1 px-3 py-1">
-          <Globe size={12} /> Live in 5 States
+          <span className="text-sm">🇮🇳</span> Live in India
         </Badge>
         <h1 className="text-5xl md:text-7xl font-semibold tracking-tight mb-6 leading-tight">
-          Civic Action. <br className="hidden md:block"/>
-          <span className="text-[#86868b]">Reimagined.</span>
+          Fix Your City. <br className="hidden md:block"/>
+          <span className="text-[#86868b]">Made Simple.</span>
         </h1>
         <p className="text-xl md:text-2xl font-medium text-[#86868b] mb-10 max-w-2xl mx-auto leading-relaxed">
-          Turn complaints into collective action. <br/>
-          <span className="text-white/80">Your voice + Our community = A Cleaner India.</span>
+          Turn complaints into real solutions. <br/>
+          <span className="text-white/80">Your voice + Our help = A Cleaner India.</span>
         </p>
         
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -1277,10 +865,11 @@ const Hero = ({ onViewChange }) => (
         </div>
       </div>
     </div>
+    </div>
 
     <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-left">
       {CATEGORIES.map((cat) => (
-        <div key={cat.id} className="bg-white p-6 rounded-[24px] border border-gray-100 shadow-sm hover:shadow-md transition-all hover:scale-[1.02] cursor-pointer group" onClick={() => onViewChange('create')}>
+        <div key={cat.id} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md transition-all hover:scale-[1.02] cursor-pointer group" onClick={() => onViewChange('create')}>
           <cat.icon className={`mb-4 text-[#1d1d1f] group-hover:scale-110 transition-transform`} size={32} />
           <h3 className="font-semibold text-[#1d1d1f] text-lg">{cat.label}</h3>
           <p className="text-xs text-[#86868b] mt-2 flex items-center gap-1 group-hover:gap-2 transition-all">Report now <ArrowLeft size={10} className="rotate-180" /></p>
@@ -1291,52 +880,38 @@ const Hero = ({ onViewChange }) => (
 );
 
 const HERO_DATA = {
-  name: 'Ravi Kumar',
-  city: 'Mumbai',
-  avatar: 'R',
-  role: 'Community Leader',
-  description: 'For consistently organizing weekend cleanup drives in Dadar and verifying 50+ community reports this week.',
-  points: 1250,
-  stats: { resolved: 12, drives: 3, volunteers: 45 },
-  drives: [
-    {
-      id: 101,
-      title: 'Dadar Beach Cleanup Drive',
-      date: 'Oct 22, 2023',
-      outcome: 'Removed 500kg of plastic waste with 20 volunteers.',
-      image: 'https://images.unsplash.com/photo-1618477461853-5f8dd37a79a3?auto=format&fit=crop&q=80&w=400'
-    },
-    {
-      id: 102,
-      title: 'Matunga Station Wall Painting',
-      date: 'Oct 15, 2023',
-      outcome: 'Beautified station walls and planted 15 saplings.',
-      image: 'https://images.unsplash.com/photo-1558618047-f4b511aae74d?auto=format&fit=crop&q=80&w=400'
-    }
-  ]
+  name: '',
+  city: '',
+  avatar: '',
+  role: '',
+  description: '',
+  points: 0,
+  weeklyPoints: 0,
+  stats: { resolved: 0, drives: 0, volunteers: 0 },
+  drives: []
 };
 
 const CITY_OF_WEEK = {
-  name: 'Indore',
-  state: 'Madhya Pradesh',
-  score: 98.5,
-  badge: 'Cleanest City',
-  description: 'Maintained #1 rank in Swachh Survekshan for the 7th consecutive time. Citizens actively report and resolve issues within 24 hours.',
-  image: 'https://images.unsplash.com/photo-1562408590-e32931084e23?auto=format&fit=crop&q=80&w=400',
-  stats: { points: '98.5k', movements: 142, impacts: 'High' }
+  name: '',
+  state: '',
+  score: 0,
+  badge: '',
+  description: '',
+  image: '',
+  stats: { points: '0', movements: 0, impacts: 'Low' }
 };
 
 const STATE_OF_WEEK = {
-  name: 'Kerala',
-  score: 96.2,
-  badge: 'Top Governance',
-  description: 'Highest literacy rate and best public healthcare index. Community-led initiatives for waste management are setting global standards.',
-  image: 'https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?auto=format&fit=crop&q=80&w=400',
-  stats: { points: '1.2M', movements: 850, impacts: 'V. High' }
+  name: '',
+  score: 0,
+  badge: '',
+  description: '',
+  image: '',
+  stats: { points: '0', movements: 0, impacts: 'Low' }
 };
 
 const HeroDetailsModal = ({ hero, onClose }) => (
-  <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in">
+  <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-200 flex items-center justify-center p-4 animate-in fade-in">
     <div className="bg-white rounded-[30px] w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
       <div className="sticky top-0 bg-white border-b border-gray-100 p-4 flex justify-between items-center z-10">
         <h3 className="font-bold text-lg flex items-center gap-2">
@@ -1369,7 +944,7 @@ const HeroDetailsModal = ({ hero, onClose }) => (
             <div key={drive.id} className="bg-gray-50 rounded-xl overflow-hidden border border-gray-100">
               <div className="h-40 w-full relative">
                  <img src={drive.image} alt={drive.title} className="w-full h-full object-cover" />
-                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 pt-12">
+                 <div className="absolute bottom-0 left-0 right-0 bg-linear-to-t from-black/80 to-transparent p-4 pt-12">
                     <h5 className="text-white font-bold">{drive.title}</h5>
                     <p className="text-white/80 text-xs">{drive.date}</p>
                  </div>
@@ -1400,105 +975,114 @@ const HeroOfTheWeek = () => {
   const [showModal, setShowModal] = useState(false);
 
   return (
-    <div className="py-16 px-6 max-w-[1200px] mx-auto">
+    <div className="py-16 px-6 max-w-300 mx-auto">
       <div className="flex flex-col gap-8">
         {/* Hero Section */}
-        <div className="bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 rounded-[30px] py-12 px-8 md:px-12 relative overflow-hidden shadow-sm border border-orange-100">
-          <div className="absolute top-0 right-0 p-8 opacity-10 text-orange-600"><Trophy size={300} /></div>
-          <div className="flex flex-col md:flex-row items-center gap-12 relative z-10">
-             <div className="w-32 h-32 md:w-40 md:h-40 rounded-full shadow-2xl overflow-hidden bg-white flex items-center justify-center text-5xl font-bold text-orange-600 border-4 border-orange-100">
-               {HERO_DATA.avatar}
-             </div>
-             <div className="flex-1 text-center md:text-left">
-               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/80 backdrop-blur-sm text-orange-800 text-xs font-bold uppercase tracking-wider mb-4 shadow-sm border border-orange-100">
-                 <Star size={12} className="fill-current" /> Hero of the Week <FeatureInfo title="Hero Selection" content="Selected weekly based on the highest impact score. Winners get featured here and receive special badges." />
-               </div>
-               <h2 className="text-4xl font-semibold text-[#1d1d1f] mb-2">{HERO_DATA.name}</h2>
-               <div className="flex items-center justify-center md:justify-start gap-2 text-gray-600 text-sm mb-3">
-                  <MapPin size={14} /> {HERO_DATA.city}
-               </div>
-               <p className="text-[#1d1d1f] text-lg max-w-xl mb-6 leading-relaxed">
-                 {HERO_DATA.description}
-               </p>
-               <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-sm font-medium text-gray-600">
-                 <span className="flex items-center gap-1"><CheckCircle size={16} className="text-green-600" /> {HERO_DATA.stats.resolved} Issues Resolved</span>
-                 <span className="flex items-center gap-1"><Users size={16} className="text-blue-600" /> {HERO_DATA.stats.drives} Drives Led</span>
-                 <button onClick={() => setShowModal(true)} className="text-orange-600 hover:text-orange-700 hover:underline flex items-center gap-1 ml-4 font-semibold">
-                   View Impact <ChevronRight size={14} />
-                 </button>
-               </div>
-             </div>
+        <div className="relative rounded-[34px] overflow-hidden border border-gray-200 shadow-xl bg-white">
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-linear-to-r from-orange-500 via-white to-green-500"></div>
+            <div className="absolute -top-20 -left-16 w-64 h-64 bg-orange-100/70 rounded-full blur-3xl"></div>
+            <div className="absolute -bottom-24 -right-16 w-72 h-72 bg-green-100/70 rounded-full blur-3xl"></div>
+          </div>
+
+          <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 md:p-10">
+            <div className="rounded-[28px] bg-[#1d1d1f] text-white p-8 md:p-10 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-56 h-56 bg-blue-400/15 rounded-full blur-3xl"></div>
+              <div className="relative z-10">
+                <Badge className="bg-white/10 text-white border border-white/20 mb-4">National Spotlight</Badge>
+                <h2 className="text-3xl md:text-4xl font-semibold leading-tight mb-4">
+                  Rashtriya Hero
+                </h2>
+                <p className="text-white/70 text-sm md:text-base leading-relaxed mb-6">
+                  Every week, the highest verified civic contributor across India will be featured here with full impact stats.
+                </p>
+                <div className="flex items-center gap-3">
+                  <div className="w-16 h-16 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center">
+                    <Award size={30} className="text-yellow-300" />
+                  </div>
+                  <div>
+                    <div className="text-sm text-white/60">Current Status</div>
+                    <div className="text-lg font-semibold">Selection In Progress</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[28px] border border-gray-200 bg-white p-7 md:p-8">
+              <div className="flex items-start justify-between gap-4 mb-5">
+                <div>
+                  <p className="text-xs font-semibold tracking-widest uppercase text-orange-700">Coming Soon</p>
+                  <h3 className="text-2xl md:text-3xl font-bold text-[#1d1d1f] mt-2 leading-tight">
+                    Who will be India's first Rashtriya Hero?
+                  </h3>
+                </div>
+                <BrandLogo size="sm" className="h-12 shrink-0" />
+              </div>
+
+              <p className="text-gray-600 leading-relaxed mb-6">
+                We are calibrating national rankings from verified reports, successful resolutions, and community endorsements.
+              </p>
+
+              <div className="grid grid-cols-2 gap-3 mb-6">
+                <div className="rounded-2xl bg-orange-50 border border-orange-100 p-4">
+                  <div className="text-2xl font-bold text-orange-700">5,000+</div>
+                  <div className="text-xs uppercase tracking-wide text-orange-800/70 mt-1">Impact Points</div>
+                </div>
+                <div className="rounded-2xl bg-green-50 border border-green-100 p-4">
+                  <div className="text-2xl font-bold text-green-700">10+</div>
+                  <div className="text-xs uppercase tracking-wide text-green-800/70 mt-1">Verified Fixes</div>
+                </div>
+              </div>
+
+              <button className="w-full px-5 py-3 rounded-2xl bg-[#1d1d1f] text-white font-medium cursor-not-allowed opacity-80">
+                Leaderboard Launching Soon
+              </button>
+            </div>
           </div>
         </div>
 
         {/* City & State Section */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
            {/* City Card */}
-           <div className="bg-white rounded-[30px] p-8 border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-500 group relative overflow-hidden">
+           <div className="p-0.75 rounded-4xl bg-linear-to-r from-orange-500 via-white to-green-500 shadow-sm hover:shadow-xl transition-all duration-500 group">
+           <div className="bg-white rounded-[30px] p-8 relative overflow-hidden h-full flex flex-col justify-center items-center text-center">
               <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full blur-3xl -mr-10 -mt-10 opacity-50"></div>
               <div className="relative z-10">
-                 <div className="flex items-start gap-5 mb-6">
-                    <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-md shrink-0">
-                    <img src={CITY_OF_WEEK.image} alt={CITY_OF_WEEK.name} className="w-full h-full object-cover" />
-                    </div>
-                    <div>
-                       <Badge className="bg-blue-100 text-blue-700 border-none mb-1">City of the Week</Badge>
-                       <h3 className="text-2xl font-bold text-[#1d1d1f]">{CITY_OF_WEEK.name}</h3>
-                       <p className="text-xs text-gray-500">{CITY_OF_WEEK.state}</p>
-                    </div>
+                 <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-500 mb-4 mx-auto">
+                    <MapPin size={32} />
                  </div>
-                 
-                 <p className="text-sm text-[#86868b] leading-relaxed mb-6 min-h-[60px]">{CITY_OF_WEEK.description}</p>
-                 
-                 <div className="grid grid-cols-3 gap-2 border-t border-gray-100 pt-4">
-                    <div className="text-center">
-                        <div className="text-lg font-bold text-[#1d1d1f]">{CITY_OF_WEEK.stats.points}</div>
-                        <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wide">Points</div>
-                    </div>
-                    <div className="text-center border-l border-gray-100">
-                        <div className="text-lg font-bold text-[#1d1d1f]">{CITY_OF_WEEK.stats.movements}</div>
-                        <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wide">Drives</div>
-                    </div>
-                    <div className="text-center border-l border-gray-100">
-                        <div className="text-lg font-bold text-green-600">{CITY_OF_WEEK.stats.impacts}</div>
-                        <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wide">Impact</div>
-                    </div>
+                 <Badge className="bg-blue-100 text-blue-700 border-none mb-3">City of the Week</Badge>
+                 <h3 className="text-2xl font-bold text-[#1d1d1f] mb-2">Is it your City?</h3>
+                 <p className="text-sm text-[#86868b] leading-relaxed mb-6 max-w-xs mx-auto">
+                    Rankings are currently being calculated based on active reports and resolutions. Mobilize your neighbors to top the charts.
+                 </p>
+                 <div className="w-full bg-gray-100 rounded-full h-2 mb-2 overflow-hidden">
+                    <div className="bg-blue-500 h-2 rounded-full w-1/3 animate-pulse"></div>
                  </div>
+                 <p className="text-xs text-gray-400 font-medium">Data collection in progress...</p>
               </div>
+           </div>
            </div>
 
            {/* State Card */}
-           <div className="bg-white rounded-[30px] p-8 border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-500 group relative overflow-hidden">
+           <div className="p-0.75 rounded-4xl bg-linear-to-r from-orange-500 via-white to-green-500 shadow-sm hover:shadow-xl transition-all duration-500 group">
+           <div className="bg-white rounded-[30px] p-8 relative overflow-hidden h-full flex flex-col justify-center items-center text-center">
               <div className="absolute top-0 right-0 w-32 h-32 bg-green-50 rounded-full blur-3xl -mr-10 -mt-10 opacity-50"></div>
               <div className="relative z-10">
-                 <div className="flex items-start gap-5 mb-6">
-                    <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-md shrink-0">
-                    <img src={STATE_OF_WEEK.image} alt={STATE_OF_WEEK.name} className="w-full h-full object-cover" />
-                    </div>
-                    <div>
-                       <Badge className="bg-green-100 text-green-700 border-none mb-1">State of the Week</Badge>
-                       <h3 className="text-2xl font-bold text-[#1d1d1f]">{STATE_OF_WEEK.name}</h3>
-                       <p className="text-xs text-gray-500">{STATE_OF_WEEK.badge}</p>
-                    </div>
+                 <div className="w-16 h-16 rounded-2xl bg-green-50 flex items-center justify-center text-green-500 mb-4 mx-auto">
+                    <Globe size={32} />
                  </div>
-                 
-                 <p className="text-sm text-[#86868b] leading-relaxed mb-6 min-h-[60px]">{STATE_OF_WEEK.description}</p>
-                 
-                 <div className="grid grid-cols-3 gap-2 border-t border-gray-100 pt-4">
-                    <div className="text-center">
-                        <div className="text-lg font-bold text-[#1d1d1f]">{STATE_OF_WEEK.stats.points}</div>
-                        <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wide">Points</div>
-                    </div>
-                    <div className="text-center border-l border-gray-100">
-                        <div className="text-lg font-bold text-[#1d1d1f]">{STATE_OF_WEEK.stats.movements}</div>
-                        <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wide">Drives</div>
-                    </div>
-                    <div className="text-center border-l border-gray-100">
-                        <div className="text-lg font-bold text-green-600">{STATE_OF_WEEK.stats.impacts}</div>
-                        <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wide">Impact</div>
-                    </div>
+                 <Badge className="bg-green-100 text-green-700 border-none mb-3">State of the Week</Badge>
+                 <h3 className="text-2xl font-bold text-[#1d1d1f] mb-2">State Rankings</h3>
+                 <p className="text-sm text-[#86868b] leading-relaxed mb-6 max-w-xs mx-auto">
+                    Which state leads in civic action? We are aggregating data from all districts. Stay tuned for the first weekly report.
+                 </p>
+                 <div className="w-full bg-gray-100 rounded-full h-2 mb-2 overflow-hidden">
+                    <div className="bg-green-500 h-2 rounded-full w-1/2 animate-pulse"></div>
                  </div>
+                 <p className="text-xs text-gray-400 font-medium">Calibrating impact scores...</p>
               </div>
+           </div>
            </div>
         </div>
       </div>
@@ -1510,13 +1094,13 @@ const HeroOfTheWeek = () => {
 // Smart Alerts Promo Section
 const SmartAlertsPromo = ({ onViewChange, user }) => (
   <div className="bg-white py-24">
-    <div className="max-w-[980px] mx-auto px-6 flex flex-col md:flex-row items-center gap-16">
+    <div className="max-w-245 mx-auto px-6 flex flex-col md:flex-row items-center gap-16">
       <div className="flex-1 space-y-6">
         <h2 className="text-4xl md:text-5xl font-semibold text-[#1d1d1f] leading-tight">
-          Stay informed. <FeatureInfo title="Smart Alerts" content="Our AI monitors reports in your area and sends you real-time alerts about scams, drives, and civic issues via Email or SMS." /><br/><span className="text-[#86868b]">Stay safe.</span>
+          Know what's happening. <FeatureInfo title="Smart Alerts" content="Our system checks reports in your area and sends you alerts about scams, drives, and issues via Email or SMS." /><br/><span className="text-[#86868b]">Stay safe.</span>
         </h2>
         <p className="text-[#1d1d1f] text-xl leading-relaxed max-w-xl font-medium">
-          Get real-time notifications about scams, volunteer opportunities, and civic issues in your specific area. Don't wait for the news—know it when it happens.
+          Get alerts about scams, volunteer work, and issues in your area. Don't wait for the news—know it when it happens.
         </p>
         
         <div className="flex flex-wrap gap-4">
@@ -1530,7 +1114,7 @@ const SmartAlertsPromo = ({ onViewChange, user }) => (
            </div>
            <div className="flex items-center gap-2 text-sm font-medium text-[#1d1d1f]">
              <div className="w-8 h-8 rounded-full bg-[#f5f5f7] flex items-center justify-center text-[#1d1d1f]"><MapPin size={16} /></div>
-             Hyper-local Updates
+             Local Updates
            </div>
         </div>
       </div>
@@ -1573,19 +1157,18 @@ const SmartAlertsPromo = ({ onViewChange, user }) => (
 );
 
 // Chapters Promo Section
-const ChaptersPromo = ({ onViewChange, chapters }) => {
-  const topChapters = [...chapters].sort((a, b) => b.score - a.score).slice(0, 5);
+const ChaptersPromo = ({ onViewChange }) => {
   return (
   <div className="py-24 bg-[#f5f5f7] relative overflow-hidden">
-    <div className="max-w-[980px] mx-auto px-6 relative z-10">
+    <div className="max-w-245 mx-auto px-6 relative z-10">
       <div className="flex flex-col md:flex-row items-center gap-12">
         <div className="flex-1 space-y-6">
           <h2 className="text-4xl md:text-5xl font-semibold text-[#1d1d1f] leading-tight">
-            Is your College or Society <FeatureInfo title="Chapters" content="Chapters are verified groups (Colleges, RWAs) that organize drives. They get a dedicated dashboard and compete on the leaderboard." /><br/>
+            Is your College or Society <FeatureInfo title="Chapters" content="Chapters are groups (Colleges, Societies) that work together. They get a dashboard and compete on the leaderboard." /><br/>
             <span className="text-[#86868b]">Leading the Change?</span>
           </h2>
           <p className="text-[#1d1d1f] text-xl leading-relaxed max-w-xl font-medium">
-            Create a verified chapter for your institution. Host official drives, track collective impact, and compete in city-wide leaderboards.
+            Create a group for your college or society. Host drives, track your impact, and compete with others.
           </p>
           
           <div className="flex flex-wrap gap-4 pt-2">
@@ -1600,34 +1183,31 @@ const ChaptersPromo = ({ onViewChange, chapters }) => {
 
         <div className="w-full md:w-auto shrink-0">
           {/* Mini Leaderboard Visual */}
-          <div className="bg-white rounded-[30px] p-8 shadow-xl max-w-sm w-full relative">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="font-semibold text-[#1d1d1f]">Chapter Leaderboard</h3>
-              <span className="text-xs text-[#86868b]">All India</span>
+          <div className="bg-white rounded-[30px] p-8 shadow-xl max-w-sm w-full relative text-center">
+            <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4 text-blue-600">
+               <Trophy size={32} />
             </div>
-            
-            <div className="space-y-4">
-              {topChapters.map((item, i) => (
-                <div key={item.id} className="flex items-center gap-3">
-                  <div className={`w-6 h-6 rounded-full ${i===0 ? 'bg-[#f5f5f7] text-[#1d1d1f]' : 'bg-[#f5f5f7] text-[#86868b]'} flex items-center justify-center text-xs font-bold`}>
-                    {i+1}
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="font-medium text-[#1d1d1f] truncate max-w-[160px]">{item.name}</span>
-                      <span className="font-mono text-[#86868b] text-xs">{(item.score / 1000).toFixed(1)}k</span>
-                    </div>
-                    <div className="h-1.5 bg-[#f5f5f7] rounded-full overflow-hidden">
-                      <div className={`h-full bg-[#1d1d1f]`} style={{ width: `${100 - (i*10)}%` }}></div>
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <h3 className="font-bold text-lg text-[#1d1d1f] mb-2">Leaderboard Launching</h3>
+            <p className="text-sm text-[#86868b] mb-6">
+              Register your institution today. Be the first to claim the top spot when rankings go live.
+            </p>
+            <div className="space-y-3 opacity-40 pointer-events-none select-none blur-[1px]">
+               <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 rounded-full bg-gray-100 text-xs flex items-center justify-center">1</div>
+                  <div className="h-2 bg-gray-100 rounded w-full"></div>
+               </div>
+               <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 rounded-full bg-gray-100 text-xs flex items-center justify-center">2</div>
+                  <div className="h-2 bg-gray-100 rounded w-3/4"></div>
+               </div>
+               <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 rounded-full bg-gray-100 text-xs flex items-center justify-center">3</div>
+                  <div className="h-2 bg-gray-100 rounded w-1/2"></div>
+               </div>
             </div>
-            
-            <div className="mt-6 pt-4 border-t border-gray-100/50 text-center">
-              <button onClick={() => onViewChange('chapters')} className="text-xs font-medium text-[#0071e3] hover:underline flex items-center justify-center gap-1 transition-colors">
-                See Full Rankings <ChevronRight size={12} />
+            <div className="mt-6 pt-4 border-t border-gray-100">
+              <button onClick={() => onViewChange('chapters')} className="text-xs font-medium text-[#0071e3] hover:underline">
+                 Register Now
               </button>
             </div>
           </div>
@@ -1641,24 +1221,23 @@ const ChaptersPromo = ({ onViewChange, chapters }) => {
 // Motivation Section
 const MotivationSection = ({ onViewChange }) => (
   <div className="relative py-32 bg-white text-[#1d1d1f] overflow-hidden">
-    <div className="max-w-[980px] mx-auto px-6 relative z-10">
+    <div className="max-w-245 mx-auto px-6 relative z-10">
       <div className="text-center max-w-4xl mx-auto mb-20">
         <h2 className="text-5xl md:text-7xl font-semibold tracking-tight leading-tight mb-8 text-[#1d1d1f]">
           Imagine an India where <br/>
-          <span className="text-[#86868b]">Action is Instant.</span>
+          <span className="text-[#86868b]">Problems get fixed fast.</span>
         </h2>
         <p className="text-xl md:text-2xl text-[#1d1d1f] font-medium leading-relaxed">
-          We are building the world's most advanced civic engagement platform. 
-          Where AI meets activism. Where your voice triggers real-world change. 
-          Where apathy dies, and a new nation rises.
+          We are building a simple way for you to improve your city. 
+          Where technology helps us work together. Where we stop ignoring issues and start solving them.
         </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-20">
         {[
-          { title: "Hyper-Local Impact", desc: "Fix the pothole outside your door. Clean the park your kids play in. Change starts at 0km.", icon: MapPin },
-          { title: "Radical Accountability", desc: "Every report is tracked on blockchain-verified ledgers. No more lost files. No more excuses.", icon: Shield },
-          { title: "Gamified Citizenship", desc: "Earn respect, badges, and city-wide fame. Making India better should feel like winning.", icon: Trophy }
+          { title: "Local Impact", desc: "Fix the pothole outside your door. Clean the park your kids play in. Change starts at home.", icon: MapPin },
+          { title: "Real Tracking", desc: "Every report is tracked. No more lost files. No more excuses.", icon: Shield },
+          { title: "Earn Rewards", desc: "Earn respect, badges, and fame. Making India better should feel like winning.", icon: Trophy }
         ].map((item, i) => (
           <div key={i} className="bg-[#f5f5f7] p-8 rounded-[30px] transition-all duration-300 group hover:scale-[1.02]">
             <div className={`w-12 h-12 rounded-full flex items-center justify-center text-[#1d1d1f] mb-6 bg-white shadow-sm`}>
@@ -1686,11 +1265,11 @@ const MotivationSection = ({ onViewChange }) => (
 // How It Works Component
 const HowItWorks = () => (
   <div className="py-24 bg-white">
-    <div className="max-w-[980px] mx-auto px-6">
+    <div className="max-w-245 mx-auto px-6">
       <div className="text-center mb-12">
-        <h2 className="text-4xl font-semibold text-[#1d1d1f] mb-4">No Dead-End Complaints <FeatureInfo title="Resolution Process" content="We track every report. If not resolved within a timeframe, it gets escalated. We also use social pressure by showcasing unresolved issues." /></h2>
+        <h2 className="text-4xl font-semibold text-[#1d1d1f] mb-4">No More Ignored Complaints <FeatureInfo title="Resolution Process" content="We track every report. If not resolved on time, we alert higher authorities. We also show unresolved issues to everyone." /></h2>
         <p className="text-[#86868b] text-xl font-medium max-w-2xl mx-auto">
-          Every issue you report starts a journey. We ensure it doesn't get lost in the void.
+          Every issue you report starts a journey. We make sure it doesn't get lost.
         </p>
       </div>
 
@@ -1699,25 +1278,25 @@ const HowItWorks = () => (
           { 
             step: "1", 
             title: "Reported", 
-            desc: "You spot an issue and file a report. It's instantly mapped and visible to the community.",
+            desc: "You spot an issue and file a report. It's instantly put on the map for everyone to see.",
             icon: FileText
           },
           { 
             step: "2", 
-            title: "Acknowledged", 
-            desc: "Local volunteers or authorities verify the issue. Trust scores increase.",
+            title: "Seen", 
+            desc: "Local volunteers or authorities check the issue. Trust scores go up.",
             icon: CheckCircle
           },
           { 
             step: "3", 
-            title: "Action Initiated", 
-            desc: "Volunteers organize a drive, or authorities dispatch a team. Status updates live.",
+            title: "Action Started", 
+            desc: "Volunteers organize a drive, or authorities send a team. You get updates.",
             icon: Zap
           },
           { 
             step: "4", 
-            title: "Resolved", 
-            desc: "The issue is fixed. Before/After photos are uploaded. Impact points awarded.",
+            title: "Fixed", 
+            desc: "The issue is fixed. Before/After photos are uploaded. You get points.",
             icon: Star
           }
         ].map((item, idx) => (
@@ -1745,31 +1324,107 @@ const HowItWorks = () => (
 );
 
 // Explore Component
-const Explore = ({ onCitySelect }) => {
+const Explore = ({ onCitySelect, posts, user }) => {
   const [activeFilter, setActiveFilter] = useState('all');
   const [heatmapMode, setHeatmapMode] = useState(false);
   const [navStack, setNavStack] = useState([]);
+  const [showMyReports, setShowMyReports] = useState(false);
 
   const currentLevel = navStack.length === 0 ? 'country' : navStack.length === 1 ? 'state' : 'city';
   const currentRegion = navStack.length > 0 ? navStack[navStack.length - 1] : null;
   
-  const mapItems = useMemo(() => getDrillDownItems(currentLevel, currentRegion), [currentLevel, currentRegion]);
+  const impactStats = useMemo(() => {
+    const resolved = posts.filter(p => p.status === 'Resolved').length;
+    const uniqueVolunteers = new Set(posts.flatMap(p => p.volunteers || [])).size;
+    const upcomingDrives = posts.filter(p => p.type === 'volunteer' && p.status !== 'Resolved').length;
+    return { resolved, uniqueVolunteers, upcomingDrives };
+  }, [posts]);
+
+  const mapItems = useMemo(() => {
+    if (showMyReports && user) {
+       return posts.filter(p => p.authorId === user.id).map(post => {
+          const stateData = STATES.find(s => s.name === post.state);
+          const baseCoords = stateData ? stateData.geoCoords : [78.9629, 22.5937];
+          // Pseudo-random jitter based on ID to separate pins visually
+          const jitterLat = ((post.id * 13) % 100) / 100 - 0.5;
+          const jitterLng = ((post.id * 7) % 100) / 100 - 0.5;
+          
+          return {
+             id: post.id,
+             name: post.title,
+             geoCoords: [baseCoords[0] + jitterLng * 2, baseCoords[1] + jitterLat * 2],
+             coords: { x: 50, y: 50 }, 
+             severity: post.status === 'Resolved' ? 'low' : 'high',
+             stats: { [post.type]: 1 }
+          };
+       }).slice(0, 200); // Limit pins for performance
+    }
+
+    if (currentLevel === 'country') {
+      return STATES.map(state => {
+        const statePosts = posts.filter(p => p.state === state.name);
+        const stats = {
+          scam: statePosts.filter(p => p.type === 'scam').length,
+          cleanliness: statePosts.filter(p => p.type === 'cleanliness').length,
+          bribe: statePosts.filter(p => p.type === 'bribe').length,
+          volunteer: statePosts.filter(p => p.type === 'volunteer').length
+        };
+        const total = statePosts.length;
+        let severity = 'low';
+        if (total > 10) severity = 'high';
+        else if (total > 5) severity = 'med';
+
+        return { ...state, stats, severity };
+      });
+    }
+
+    if (currentLevel === 'state' && currentRegion) {
+       return (currentRegion.cities || []).map((city, i) => {
+          const cityPosts = posts.filter(p => p.city === city);
+          const stats = {
+            scam: cityPosts.filter(p => p.type === 'scam').length,
+            cleanliness: cityPosts.filter(p => p.type === 'cleanliness').length,
+            bribe: cityPosts.filter(p => p.type === 'bribe').length,
+            volunteer: cityPosts.filter(p => p.type === 'volunteer').length
+          };
+          const total = cityPosts.length;
+          let severity = 'low';
+          if (total > 5) severity = 'high';
+          else if (total > 2) severity = 'med';
+          
+          // Generate deterministic coordinates around state center for visualization
+          const angle = (i / (currentRegion.cities.length || 1)) * 2 * Math.PI;
+          const radius = 1.5; 
+          const lat = currentRegion.geoCoords[1] + Math.sin(angle) * radius * 0.8;
+          const lng = currentRegion.geoCoords[0] + Math.cos(angle) * radius;
+
+          return {
+             id: city,
+             name: city,
+             geoCoords: [lng, lat],
+             severity,
+             stats
+          };
+       });
+    }
+
+    return getDrillDownItems(currentLevel, currentRegion);
+  }, [currentLevel, currentRegion, showMyReports, user, posts]);
 
   const handleRegionSelect = (item) => {
-    if (currentLevel === 'city') {
-      // Leaf node (Area) selected -> Go to dashboard
-      // We pass the city name (parent of current area)
-      onCitySelect(currentRegion.name);
+    if (showMyReports) return;
+    if (currentLevel === 'state') {
+      onCitySelect(item.name);
     } else {
       setNavStack([...navStack, item]);
     }
   };
 
   return (
-    <div className="max-w-[980px] mx-auto py-8 px-6">
+    <div className="max-w-245 mx-auto py-8 px-6">
       <div className="mb-8 text-center md:text-left">
         <div className="flex items-center justify-center md:justify-start gap-3 mb-2">
-          {navStack.length > 0 && (
+          {navStack.length > 0 && !showMyReports && (
             <button 
               onClick={() => setNavStack(prev => prev.slice(0, -1))}
               className="p-2 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors"
@@ -1778,17 +1433,19 @@ const Explore = ({ onCitySelect }) => {
               <ArrowLeft size={20} />
             </button>
           )}
-          <h2 className="text-3xl font-bold text-gray-900">Live Activity Map <FeatureInfo title="Interactive Map" content="View real-time reports across India. Click on pins to see details. Use the heatmap to identify high-severity zones." /></h2>
+          <h2 className="text-3xl font-bold text-gray-900">{showMyReports ? 'My Reports Map' : 'Live Activity Map'} <FeatureInfo title="Interactive Map" content="View real-time reports across India. Click on pins to see details. Use the heatmap to identify high-severity zones." /></h2>
         </div>
         <p className="text-gray-500">
-          {currentLevel === 'country' && "Select a State to view cities."}
-          {currentLevel === 'state' && `Viewing cities in ${currentRegion.name}. Select a city.`}
-          {currentLevel === 'city' && `Viewing areas in ${currentRegion.name}. Select an area to see reports.`}
+          {showMyReports 
+            ? "Visualizing locations of your submitted reports." 
+            : currentLevel === 'country' ? "Select a State to view cities."
+            : currentLevel === 'state' ? `Viewing cities in ${currentRegion.name}. Select a city.`
+            : `Viewing areas in ${currentRegion.name}. Select an area to see reports.`}
         </p>
       </div>
 
       {/* Map Controls */}
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6 bg-white p-4 rounded-[24px] shadow-sm">
+      <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6 bg-white p-4 rounded-3xl shadow-sm">
         <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0">
           <button 
             onClick={() => setActiveFilter('all')}
@@ -1809,6 +1466,14 @@ const Explore = ({ onCitySelect }) => {
         </div>
 
         <div className="flex items-center gap-3 border-l pl-4 border-gray-200">
+          {user && (
+            <button 
+              onClick={() => setShowMyReports(!showMyReports)}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${showMyReports ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}
+            >
+              My Reports
+            </button>
+          )}
           <span className="text-sm font-bold text-gray-700">Heatmap <FeatureInfo title="Heatmap Mode" content="Toggle this to visualize the density and severity of reports. Red areas indicate high activity or critical issues." /></span>
           <button 
             onClick={() => setHeatmapMode(!heatmapMode)}
@@ -1838,15 +1503,15 @@ const Explore = ({ onCitySelect }) => {
              <div className="space-y-4">
                 <div className="flex justify-between items-center border-b border-gray-700 pb-2">
                    <span className="text-sm text-gray-300">Issues Resolved</span>
-                   <span className="font-mono font-bold text-emerald-400">1,204</span>
+                   <span className="font-mono font-bold text-emerald-400">{impactStats.resolved}</span>
                 </div>
                 <div className="flex justify-between items-center border-b border-gray-700 pb-2">
                    <span className="text-sm text-gray-300">Active Volunteers</span>
-                   <span className="font-mono font-bold text-blue-400">8,500</span>
+                   <span className="font-mono font-bold text-blue-400">{impactStats.uniqueVolunteers}</span>
                 </div>
                 <div className="flex justify-between items-center">
                    <span className="text-sm text-gray-300">Upcoming Drives</span>
-                   <span className="font-mono font-bold text-orange-400">42</span>
+                   <span className="font-mono font-bold text-orange-400">{impactStats.upcomingDrives}</span>
                 </div>
              </div>
           </div>
@@ -1856,127 +1521,220 @@ const Explore = ({ onCitySelect }) => {
   );
 };
 
-// Impact Wall Component (Before/After Gallery)
-const ImpactWall = ({ posts, onViewChange }) => {
-  const [showAll, setShowAll] = useState(false);
-  const resolvedPosts = posts.filter(p => p.status === 'Resolved' && p.evidence?.before && p.evidence?.after);
+// New components for Impact Wall Redesign
 
-  if (resolvedPosts.length === 0) return null;
-  const displayedPosts = showAll ? resolvedPosts : resolvedPosts.slice(0, 3);
+const ImpactStatBadge = ({ icon, value, label }) => {
+  const IconComponent = icon;
+  return (
+    <div className="flex items-center gap-4 px-6 py-4 bg-white rounded-xl border border-gray-100 shadow-sm min-w-50">
+      <div className="p-3 bg-blue-50 text-blue-700 rounded-lg">
+        <IconComponent size={24} />
+      </div>
+      <div>
+        <div className="text-2xl font-bold text-gray-900 leading-none">{value}</div>
+        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mt-1">{label}</div>
+      </div>
+    </div>
+  );
+};
 
-  // Helper to calculate duration (Mock implementation for demo)
-  const getDuration = (post) => {
-     // In a real app, parse post.timeline[0].date and post.timeline[last].date
-     return (post.id % 5) + 2 + " Days"; 
-  };
+const TransformationCard = ({ post, onClick, onLike }) => {
+  const [showBefore, setShowBefore] = useState(false);
 
   return (
-    <div className="py-24 bg-[#1d1d1f] text-white relative overflow-hidden">
-      <div className="max-w-[980px] mx-auto px-6 relative z-10">
-        <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
-          <div>
-            <h2 className="text-4xl md:text-5xl font-semibold text-white mb-4">City Transformation Wall <FeatureInfo title="Impact Gallery" content="A collection of verified 'Before & After' photos. This proves that collective action works. Only resolved issues with evidence appear here." /></h2>
-            <p className="text-gray-400 text-xl font-medium max-w-xl leading-relaxed">Real stories of change. See how citizens and authorities are working together to fix our cities, one report at a time.</p>
-          </div>
-          <div className="flex gap-4 text-sm font-mono">
-             <div className="bg-white/10 backdrop-blur-md px-6 py-4 rounded-2xl text-center min-w-[100px] border border-white/10">
-               <span className="block text-2xl font-bold text-green-400">{resolvedPosts.length}</span>
-               <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Fixed</span>
-             </div>
-             <div className="bg-white/10 backdrop-blur-md px-6 py-4 rounded-2xl text-center min-w-[100px] border border-white/10">
-               <span className="block text-2xl font-bold text-blue-400">{resolvedPosts.reduce((acc, p) => acc + (p.vouchCount || 0), 0)}</span>
-               <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Vouches</span>
-             </div>
-          </div>
+    <div 
+      className="bg-white rounded-xl overflow-hidden border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 group flex flex-col h-full cursor-pointer"
+      onClick={() => onClick(post)}
+    >
+      <div className="relative h-56 overflow-hidden bg-gray-100">
+        <img 
+          src={showBefore ? post.evidence.before : post.evidence.after} 
+          alt={showBefore ? "Before" : "After"} 
+          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+        />
+        <div className="absolute top-3 left-3 flex gap-2">
+           <span className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md backdrop-blur-md shadow-sm ${showBefore ? 'bg-amber-500 text-white' : 'bg-emerald-600 text-white'}`}>
+             {showBefore ? 'Before' : 'Resolved'}
+           </span>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {displayedPosts.map(post => (
-            <div 
-              key={post.id} 
-              onClick={() => onViewChange('post', { post })}
-              className="bg-white/5 border border-white/10 rounded-[24px] overflow-hidden transition-all duration-500 group cursor-pointer flex flex-col h-full hover:scale-[1.02] hover:bg-white/10"
-            >
-              {/* Before/After Slider Effect */}
-              <div className="relative h-64 overflow-hidden">
-                <div className="absolute inset-0 flex transition-transform duration-700 group-hover:scale-105">
-                   <div className="w-1/2 h-full relative border-r border-white/10">
-                      <img src={post.evidence.before} alt="Before" className="w-full h-full object-cover filter grayscale contrast-125 group-hover:grayscale-0 transition-all duration-500" />
-                      <div className="absolute top-4 left-4 bg-black/70 backdrop-blur-md px-2.5 py-1 text-[10px] font-bold rounded-md text-white border border-white/10 shadow-lg">BEFORE</div>
-                   </div>
-                   <div className="w-1/2 h-full relative">
-                      <img src={post.evidence.after} alt="After" className="w-full h-full object-cover" />
-                      <div className="absolute bottom-4 right-4 bg-emerald-600 shadow-lg shadow-emerald-900/50 px-2.5 py-1 text-[10px] font-bold rounded-md text-white flex items-center gap-1">
-                        AFTER <CheckCircle size={10} />
-                      </div>
-                   </div>
-                </div>
-                {/* Center Badge */}
-                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white text-slate-950 rounded-full p-2 shadow-xl z-10 group-hover:scale-110 transition-transform duration-300">
-                   <ArrowLeft size={16} className="rotate-180" />
-                </div>
+        <button 
+          onClick={(e) => { e.stopPropagation(); setShowBefore(!showBefore); }}
+          className="absolute bottom-3 right-3 bg-white/90 hover:bg-white text-gray-800 text-xs font-bold px-3 py-1.5 rounded-full shadow-sm backdrop-blur-sm transition-all flex items-center gap-1"
+        >
+          <ArrowLeft size={12} className={`transition-transform duration-300 ${showBefore ? 'rotate-180' : ''}`} />
+          {showBefore ? 'Show After' : 'Show Before'}
+        </button>
+      </div>
 
-                {/* Overlay on Hover */}
-                <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
-                  <span className="bg-white text-slate-950 px-4 py-2 rounded-full font-bold text-sm flex items-center gap-2 transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
-                    View Full Journey <ArrowLeft size={14} className="rotate-180" />
-                  </span>
-                </div>
-              </div>
-              
-              <div className="p-6 flex flex-col flex-1">
-                <div className="flex justify-between items-start mb-4">
-                   <div className="flex items-center gap-2">
-                     <Badge className="bg-white/10 text-white border-none backdrop-blur-sm">{post.city}</Badge>
-                     <span className="text-xs text-slate-500 font-mono flex items-center gap-1">
-                       <Clock size={10} /> {getDuration(post)}
-                     </span>
-                   </div>
-                </div>
-                
-                <h3 className="font-semibold text-xl mb-3 text-white leading-tight">{post.title}</h3>
-                <p className="text-sm text-gray-400 line-clamp-2 mb-6 flex-1 font-medium">{post.description}</p>
-                
-                <div className="pt-5 border-t border-white/10 flex items-center justify-between mt-auto">
-                   <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-white">
-                        {post.author.charAt(0)}
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold text-white">{post.author}</span>
-                        <span className="text-[10px] text-gray-400">Reporter</span>
-                      </div>
-                   </div>
-                   
-                   <div className="flex items-center gap-1 text-white text-xs font-bold bg-white/10 px-2 py-1 rounded-lg">
-                      <ThumbsUp size={12} /> {post.upvotes}
-                   </div>
-                </div>
-              </div>
+      <div className="p-5 flex flex-col flex-1">
+        <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
+          <MapPin size={12} />
+          <span className="font-medium">{post.city}</span>
+          <span className="text-gray-300">•</span>
+          <span>{post.date}</span>
+        </div>
+        
+        <h3 className="font-bold text-gray-900 text-lg mb-2 leading-snug group-hover:text-blue-700 transition-colors">
+          {post.title}
+        </h3>
+        
+        <p className="text-sm text-gray-600 line-clamp-2 mb-4 flex-1">
+          {post.description}
+        </p>
+
+        <div className="pt-4 border-t border-gray-100 flex items-center justify-between mt-auto">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-600">
+              {isSensitive ? 'A' : post.author.charAt(0)}
             </div>
+            <span className="text-xs font-medium text-gray-700">{isSensitive ? 'Anonymous Citizen' : post.author}</span>
+          </div>
+          <button 
+            onClick={(e) => { e.stopPropagation(); onLike && onLike(post.id); }}
+            className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-blue-600 transition-colors group/like"
+          >
+             <ThumbsUp size={12} className="group-hover/like:scale-110 transition-transform" /> {post.upvotes}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ImpactWall = ({ posts, onViewChange, onLike }) => {
+  const [filterState, setFilterState] = useState('All');
+  const [filterCity, setFilterCity] = useState('All');
+  const resolvedPosts = posts.filter(p => p.status === 'Resolved' && p.evidence?.before && p.evidence?.after);
+  
+  const filteredPosts = resolvedPosts.filter(p => {
+    if (filterState !== 'All' && p.state !== filterState) return false;
+    if (filterCity !== 'All' && p.city !== filterCity) return false;
+    return true;
+  });
+
+  const availableCities = useMemo(() => {
+    if (filterState === 'All') return [...new Set(STATES.flatMap(s => s.cities).sort())];
+    const state = STATES.find(s => s.name === filterState);
+    return state ? state.cities : [];
+  }, [filterState]);
+
+  const stats = {
+    fixed: resolvedPosts.length,
+    vouches: resolvedPosts.reduce((acc, p) => acc + (p.vouchCount || 0), 0),
+    impact: resolvedPosts.reduce((acc, p) => acc + (p.upvotes || 0), 0) * 10
+  };
+
+  if (resolvedPosts.length === 0) return null;
+
+  return (
+    <div className="py-20 bg-gray-50 border-t border-gray-200">
+      <div className="max-w-275 mx-auto px-6">
+        
+        {/* Header Section */}
+        <div className="text-center max-w-3xl mx-auto mb-16">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-bold uppercase tracking-widest mb-4">
+            Proven Results
+          </div>
+          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4 tracking-tight">
+            Success Stories
+          </h2>
+          <p className="text-lg text-gray-600 leading-relaxed">
+            Real stories of change by people like you. These reports have been fixed by the community and authorities.
+          </p>
+        </div>
+
+        {/* Stats Bar */}
+        <div className="flex flex-wrap justify-center gap-6 mb-12">
+           <ImpactStatBadge icon={CheckSquare} value={stats.fixed} label="Issues Resolved" />
+           <ImpactStatBadge icon={Users} value={stats.vouches} label="Citizen Verifications" />
+           <ImpactStatBadge icon={Activity} value={stats.impact} label="Impact Points Generated" />
+        </div>
+
+        {/* Filter Tabs */}
+        <div className="flex flex-col sm:flex-row justify-center mb-10 gap-4">
+          <select
+            value={filterState}
+            onChange={(e) => { setFilterState(e.target.value); setFilterCity('All'); }}
+            className="px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer shadow-sm min-w-40"
+          >
+            <option value="All">All States</option>
+            {STATES.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+          </select>
+
+          <select
+            value={filterCity}
+            onChange={(e) => setFilterCity(e.target.value)}
+            className="px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer shadow-sm min-w-40"
+          >
+            <option value="All">All Cities</option>
+            {availableCities.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+
+        {/* Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {filteredPosts.map((post) => (
+             <TransformationCard 
+               key={post.id}
+               post={post} 
+               onClick={(p) => onViewChange('post', { post: p })} 
+               onLike={onLike}
+             />
           ))}
         </div>
 
-        {resolvedPosts.length > 3 && (
-          <div className="mt-12 text-center">
-            <Button 
-              variant="outline" 
-              className="border-white/20 text-white hover:bg-white/10 hover:border-white/30 transition-all px-8 py-3 rounded-full"
-              onClick={() => setShowAll(!showAll)}
-            >
-              {showAll ? 'Show Less Stories' : 'View More Impact Stories'}
-            </Button>
+        {filteredPosts.length === 0 && (
+          <div className="text-center py-16 bg-white rounded-xl border border-dashed border-gray-300">
+            <p className="text-gray-500">No resolved stories found for this filter.</p>
           </div>
         )}
+
+        <div className="mt-16 text-center border-t border-gray-200 pt-10">
+          <p className="text-gray-600 mb-6 font-medium">Have you spotted an issue in your neighborhood?</p>
+          <button 
+            onClick={() => onViewChange('create')}
+            className="inline-flex items-center gap-2 px-8 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-sm"
+          >
+            Submit a Report <ArrowLeft size={16} className="rotate-180" />
+          </button>
+        </div>
       </div>
     </div>
   );
 };
 
+const RegisterChapterModal = ({ formData, setFormData, onClose, onSubmit }) => (
+  <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-200 flex items-center justify-center p-4 animate-in fade-in">
+    <div className="bg-white rounded-[30px] w-full max-w-md p-8 shadow-2xl">
+      <div className="flex justify-between items-center mb-6">
+        <h3 className="text-xl font-bold text-gray-900">Register New Chapter</h3>
+        <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full"><X size={20} /></button>
+      </div>
+      <form onSubmit={onSubmit} className="space-y-4">
+        <div><label className="block text-sm font-medium text-gray-700 mb-1">Chapter Name</label><input type="text" required className="w-full px-4 py-2 rounded-xl bg-gray-50 border-none focus:ring-2 focus:ring-blue-500 outline-none" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="e.g. Green Earth Society" /></div>
+        <div><label className="block text-sm font-medium text-gray-700 mb-1">Type</label><select className="w-full px-4 py-2 rounded-xl bg-gray-50 border-none focus:ring-2 focus:ring-blue-500 outline-none" value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})}><option>Society</option><option>College</option><option>NGO</option><option>Corporate</option></select></div>
+        <div><label className="block text-sm font-medium text-gray-700 mb-1">City</label><input type="text" required className="w-full px-4 py-2 rounded-xl bg-gray-50 border-none focus:ring-2 focus:ring-blue-500 outline-none" value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} placeholder="e.g. Mumbai" /></div>
+        <Button variant="primary" className="w-full mt-4">Submit Registration</Button>
+      </form>
+    </div>
+  </div>
+);
+
 // Chapters Component
-const Chapters = ({ chapters, onJoin }) => {
+const Chapters = ({ chapters, onJoin, onRegister, user, myChapterIds }) => {
   const [filterState, setFilterState] = useState('');
   const [filterCity, setFilterCity] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [formData, setFormData] = useState({ name: '', type: 'Society', city: '' });
+
+  const handleRegisterSubmit = (e) => {
+    e.preventDefault();
+    onRegister(formData);
+    setShowRegisterModal(false);
+    setFormData({ name: '', type: 'Society', city: '' });
+  };
 
   const filteredChapters = chapters.filter(chapter => {
     if (filterState) {
@@ -1984,6 +1742,7 @@ const Chapters = ({ chapters, onJoin }) => {
       if (!stateData || !stateData.cities.includes(chapter.city)) return false;
     }
     if (filterCity && chapter.city !== filterCity) return false;
+    if (searchQuery && !chapter.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
 
@@ -1992,69 +1751,71 @@ const Chapters = ({ chapters, onJoin }) => {
     : [...new Set(STATES.flatMap(s => s.cities))].sort();
 
   return (
-    <div className="max-w-[980px] mx-auto py-12 px-6">
+    <div className="max-w-245 mx-auto py-12 px-6">
       {/* Hero */}
-      <div className="bg-[#1d1d1f] rounded-[30px] p-10 md:p-16 text-white mb-16 relative overflow-hidden">
+      <div className="p-0.75 rounded-4xl bg-linear-to-r from-orange-500 via-white to-green-500 mb-16 shadow-2xl">
+      <div className="bg-[#1d1d1f] rounded-[30px] p-10 md:p-16 text-white relative overflow-hidden h-full">
         <div className="absolute top-0 right-0 w-96 h-96 bg-[#0071e3]/20 rounded-full blur-3xl -mr-20 -mt-20"></div>
         <div className="relative z-10 max-w-2xl">
-          <Badge className="bg-[#0071e3]/20 text-white border-none mb-6">Institutional Partners</Badge>
-          <h1 className="text-5xl md:text-6xl font-semibold tracking-tight mb-6 leading-tight">Unite Your Campus.<FeatureInfo title="Institutional Impact" content="Register your institution to track collective impact. Students/Residents earn points for their chapter." /><br/><span className="text-[#86868b]">Lead the Change.</span></h1>
+          <Badge className="bg-[#0071e3]/20 text-white border-none mb-6">Partners</Badge>
+          <h1 className="text-5xl md:text-6xl font-semibold tracking-tight mb-6 leading-tight">Unite Your Group.<FeatureInfo title="Group Impact" content="Register your group to track total impact. Students/Residents earn points for their chapter." /><br/><span className="text-[#86868b]">Lead the Change.</span></h1>
           <p className="text-[#86868b] text-xl font-medium mb-10 leading-relaxed">
-            Create a verified chapter for your College or Society. Host official drives, track collective impact, and compete in city-wide challenges.
+            Create a verified group for your College or Society. Host drives, track impact, and compete in city challenges.
           </p>
           <div className="flex flex-wrap gap-4">
-            <Button variant="primary" className="px-8 py-3 text-[17px]">Register Chapter</Button>
+            <Button variant="primary" className="px-8 py-3 text-[17px]" onClick={() => user ? setShowRegisterModal(true) : alert('Please login to register a chapter.')}>Register Chapter</Button>
             <Button variant="outline" className="border-[#86868b] text-white hover:bg-[#333] hover:border-[#333]">Find My Chapter</Button>
           </div>
         </div>
+      </div>
       </div>
 
       {/* Live Challenge */}
       <div className="mb-20">
         <h2 className="text-3xl font-semibold text-[#1d1d1f] mb-6 flex items-center gap-3">
-          <Zap className="text-[#ff3b30]" fill="currentColor" /> Live Challenge <FeatureInfo title="Live Challenges" content="Time-bound competitions between chapters. Winners get grants and recognition. Participate by organizing drives or resolving issues." />
+          <Zap className="text-[#ff3b30]" fill="currentColor" /> Live Challenge <FeatureInfo title="Live Challenges" content="Competitions between chapters. Winners get grants and recognition. Participate by organizing drives or resolving issues." />
         </h2>
         <div className="bg-[#1d1d1f] text-white rounded-[30px] p-10 shadow-2xl relative overflow-hidden">
-           <div className="absolute -top-1/4 -right-1/4 w-1/2 h-1/2 bg-gradient-to-tl from-orange-500/20 to-red-500/20 rounded-full blur-3xl animate-pulse"></div>
+           <div className="absolute -top-1/4 -right-1/4 w-1/2 h-1/2 bg-linear-to-tl from-orange-500/20 to-red-500/20 rounded-full blur-3xl animate-pulse"></div>
            <div className="relative z-10 flex flex-col md:flex-row md:items-center gap-8">
              <div className="flex-1">
                <div className="flex justify-between items-start mb-2">
                  <div>
-                   <h3 className="text-3xl font-semibold">Mumbai Cleanathon 2024</h3>
-                   <p className="text-[#86868b] font-medium">Inter-college cleanup drive race.</p>
+                   <h3 className="text-3xl font-semibold">First Challenge</h3>
+                   <p className="text-[#86868b] font-medium">The first national inter-chapter competition.</p>
                  </div>
-                 <Badge className="bg-red-500 text-white border-none animate-pulse px-3 py-1">Live</Badge>
+                 <Badge className="bg-blue-500 text-white border-none px-3 py-1">Coming Soon</Badge>
                </div>
-               <p className="text-sm text-orange-400 font-mono mb-6">Ends in: 4 Days 11 Hours</p>
+               <p className="text-sm text-orange-400 font-mono mb-6">Registration Opens: Next Week</p>
                
-               <div className="space-y-5">
+               <div className="space-y-5 opacity-50 grayscale">
                  <div className="flex items-center gap-4">
-                   <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center font-bold text-white text-sm">IITB</div>
+                   <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center font-bold text-white text-sm">?</div>
                    <div className="flex-1">
                      <div className="flex justify-between items-baseline mb-1">
-                       <span className="font-semibold text-white">IIT Bombay</span>
-                       <span className="font-mono text-blue-300">15,400 pts</span>
+                       <span className="font-semibold text-white">Your Chapter Here</span>
+                       <span className="font-mono text-gray-400">0 pts</span>
                      </div>
-                     <div className="h-2 bg-white/10 rounded-full"><div className="h-2 bg-blue-500 rounded-full w-[65%]"></div></div>
+                     <div className="h-2 bg-white/10 rounded-full"><div className="h-2 bg-gray-600 rounded-full w-[0%]"></div></div>
                    </div>
                  </div>
                  <div className="flex items-center gap-4">
-                   <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center font-bold text-white text-sm">SXC</div>
+                   <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center font-bold text-white text-sm">?</div>
                    <div className="flex-1">
                      <div className="flex justify-between items-baseline mb-1">
-                       <span className="font-semibold text-white">St. Xavier's College</span>
-                       <span className="font-mono text-green-300">11,200 pts</span>
+                       <span className="font-semibold text-white">Competitor Chapter</span>
+                       <span className="font-mono text-gray-400">0 pts</span>
                      </div>
-                     <div className="h-2 bg-white/10 rounded-full"><div className="h-2 bg-green-500 rounded-full w-[48%]"></div></div>
+                     <div className="h-2 bg-white/10 rounded-full"><div className="h-2 bg-gray-600 rounded-full w-[0%]"></div></div>
                    </div>
                  </div>
                </div>
              </div>
              <div className="w-full md:w-56 text-center bg-white/5 p-6 rounded-2xl border border-white/10 backdrop-blur-sm">
                 <Trophy size={40} className="mx-auto text-yellow-400 mb-3" />
-                <p className="font-bold text-lg">Top Prize</p>
-                <p className="text-sm text-gray-400">₹50,000 Grant for Campus Sustainability Projects</p>
-                <Button variant="secondary" className="mt-4 w-full !text-sm">View Challenge</Button>
+                <p className="font-bold text-lg">Prize Pool</p>
+                <p className="text-sm text-gray-400">Grants & National Recognition</p>
+                <Button variant="secondary" className="mt-4 w-full text-sm!" disabled>Details Soon</Button>
              </div>
            </div>
         </div>
@@ -2063,7 +1824,17 @@ const Chapters = ({ chapters, onJoin }) => {
       {/* Filters */}
       <div className="flex flex-col md:flex-row gap-4 mb-10 items-center justify-between">
         <h2 className="text-2xl font-semibold text-[#1d1d1f]">Find a Chapter <FeatureInfo title="Chapter Directory" content="Search for chapters in your city. Joining a chapter helps you collaborate with neighbors or peers." /></h2>
-        <div className="flex gap-3 w-full md:w-auto">
+        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+          <div className="relative w-full sm:w-auto">
+            <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
+            <input 
+              type="text" 
+              placeholder="Search chapters..." 
+              className="w-full sm:w-64 pl-9 pr-4 py-2 rounded-xl bg-white border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#0071e3]/20"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
           <select 
             className="px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#0071e3]/20 cursor-pointer"
             value={filterState}
@@ -2087,10 +1858,10 @@ const Chapters = ({ chapters, onJoin }) => {
       {/* Directory */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         {filteredChapters.length > 0 ? filteredChapters.map(chapter => (
-          <div key={chapter.id} className="bg-white rounded-[24px] shadow-sm hover:shadow-xl transition-all duration-300 group hover:-translate-y-1 border border-gray-100/50 flex flex-col overflow-hidden">
+          <div key={chapter.id} className="bg-white rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 group hover:-translate-y-1 border border-gray-100/50 flex flex-col overflow-hidden">
             <div className="p-6 flex-1 flex flex-col">
               <div className="flex items-start gap-4 mb-4">
-                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${chapter.color} flex items-center justify-center text-white font-bold text-lg shrink-0`}>
+                <div className={`w-12 h-12 rounded-xl bg-linear-to-br ${chapter.color} flex items-center justify-center text-white font-bold text-lg shrink-0`}>
                   {chapter.name.charAt(0)}
                 </div>
                 <div className="flex-1">
@@ -2118,7 +1889,11 @@ const Chapters = ({ chapters, onJoin }) => {
               </div>
             </div>
             <div className="p-4 bg-[#f5f5f7] border-t border-gray-200/80">
-              <Button variant="secondary" className="w-full !text-sm !py-2" onClick={() => onJoin(chapter)}>Join Chapter</Button>
+              {myChapterIds.includes(chapter.id) ? (
+                <Button variant="outline" className="w-full text-sm! py-2! bg-green-50 text-green-700 border-green-200" disabled>Joined</Button>
+              ) : (
+                <Button variant="secondary" className="w-full text-sm! py-2!" onClick={() => onJoin(chapter)}>Join Chapter</Button>
+              )}
             </div>
           </div>
         )) : (
@@ -2131,76 +1906,35 @@ const Chapters = ({ chapters, onJoin }) => {
 
       {/* Points Breakdown */}
       <PointsBreakdown />
+      {showRegisterModal && (
+        <RegisterChapterModal
+          formData={formData}
+          setFormData={setFormData}
+          onClose={() => setShowRegisterModal(false)}
+          onSubmit={handleRegisterSubmit}
+        />
+      )}
     </div>
   );
 };
 
 // Leaderboard Component
-const Leaderboard = ({ currentUser, onBack, chapters }) => {
+const Leaderboard = ({ onBack }) => {
   const [activeTab, setActiveTab] = useState('citizens');
 
-  // Mock Data for National Leaderboard
-  // In a real app, this would be fetched from backend sorted by score
-  const leaders = useMemo(() => {
-    const firstNames = ['Aarav', 'Vivaan', 'Aditya', 'Vihaan', 'Arjun', 'Sai', 'Reyansh', 'Ayaan', 'Krishna', 'Ishaan', 'Saanvi', 'Aanya', 'Aadhya', 'Aaradhya', 'Ananya', 'Pari', 'Anika', 'Navya', 'Diya', 'Myra'];
-    const lastNames = ['Sharma', 'Verma', 'Gupta', 'Singh', 'Kumar', 'Patel', 'Shah', 'Mehta', 'Jain', 'Reddy', 'Naidu', 'Iyer', 'Menon', 'Nair'];
-    const cities = ['Mumbai', 'Delhi NCR', 'Bengaluru', 'Chennai', 'Kolkata', 'Hyderabad', 'Pune', 'Ahmedabad', 'Jaipur', 'Lucknow'];
-    const badges = ['Change Maker', 'Guardian', 'Activist', 'Verified Reporter', 'Rising Star'];
-    const avatars = ['bg-orange-100 text-orange-700', 'bg-blue-100 text-blue-700', 'bg-green-100 text-green-700', 'bg-purple-100 text-purple-700', 'bg-yellow-100 text-yellow-700'];
-
-    const data = [];
-    for (let i = 0; i < 100; i++) {
-        const score = 10000 - (i * 70) - Math.floor(Math.random() * 50);
-        data.push({
-            id: `l${i + 1}`,
-            name: `${firstNames[i % firstNames.length]} ${lastNames[i % lastNames.length]}`,
-            city: cities[i % cities.length],
-            reports: Math.floor(Math.random() * 100) + 20,
-            resolved: Math.floor(Math.random() * 80) + 10,
-            volunteers: Math.floor(Math.random() * 20),
-            score: score,
-            badge: i === 0 ? 'National Hero' : badges[i % badges.length],
-            avatar: avatars[i % avatars.length]
-        });
-    }
-    
-    // If current user exists and isn't in top 100, add them for display
-    if (currentUser) {
-      // Calculate mock score for current user
-      const userScore = 1250; // Base score
-      const userEntry = { 
-        id: currentUser.id, 
-        name: currentUser.name, 
-        city: currentUser.city || 'India', 
-        reports: 12, 
-        resolved: 4, 
-        volunteers: 1, 
-        score: userScore, 
-        badge: 'Rising Star',
-        avatar: 'bg-blue-600 text-white',
-        isMe: true,
-        rank: 1452 // Mock rank
-      };
-      // We don't push to top 100, but we use it for the "Your Rank" card
-      return { top: data, me: userEntry };
-    }
-    return { top: data, me: null };
-  }, [currentUser, activeTab]);
-
-  const displayData = activeTab === 'citizens' ? leaders.top : chapters.sort((a,b) => b.score - a.score);
-
   return (
-    <div className="max-w-[980px] mx-auto py-12 px-6">
+    <div className="max-w-245 mx-auto py-12 px-6">
       {/* Hero Section */}
-      <div className="bg-[#1d1d1f] rounded-[30px] p-10 md:p-16 text-white mb-12 relative overflow-hidden">
+      <div className="p-0.75 rounded-4xl bg-linear-to-r from-orange-500 via-white to-green-500 mb-12 shadow-2xl">
+      <div className="bg-[#1d1d1f] rounded-[30px] p-10 md:p-16 text-white relative overflow-hidden h-full">
         <div className="absolute top-0 right-0 w-96 h-96 bg-yellow-500/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
         <div className="relative z-10">
-          <Badge className="bg-yellow-500/20 text-yellow-300 border-none mb-6">National Rankings</Badge>
+          <Badge className="bg-yellow-500/20 text-yellow-300 border-none mb-6">Top Rankers</Badge>
           <h1 className="text-5xl md:text-6xl font-semibold tracking-tight mb-6 leading-tight">
-            Civic Champions.<FeatureInfo title="National Rankings" content="We rank citizens and institutions based on their Civic Score. This score is calculated from reports filed, verified, and resolved." /><br/><span className="text-[#86868b]">Real Impact.</span>
+            Season 1.<FeatureInfo title="Top Rankers" content="We rank people and groups based on their Civic Score. This score comes from reports filed, verified, and fixed." /><br/><span className="text-[#86868b]">Starting Soon.</span>
           </h1>
           <p className="text-[#86868b] text-xl font-medium mb-8 leading-relaxed max-w-2xl">
-            Recognizing the citizens and institutions transforming India, one report at a time. Scores are calculated based on verified impact.
+            We are preparing to recognize the people and groups changing India. Start helping now to get a head start.
           </p>
           
           {/* Toggle inside Hero */}
@@ -2214,90 +1948,18 @@ const Leaderboard = ({ currentUser, onBack, chapters }) => {
           </div>
         </div>
       </div>
+      </div>
 
-      {/* Current User Rank Card */}
-      {leaders.me && activeTab === 'citizens' && (
-        <div className="bg-gradient-to-r from-[#0071e3] to-[#00c7be] rounded-[30px] p-8 text-white shadow-lg mb-12 flex items-center justify-between relative overflow-hidden group">
-          <div className="absolute right-0 top-0 opacity-10 transform translate-x-10 -translate-y-10 transition-transform group-hover:scale-110 duration-700"><Trophy size={200} /></div>
-          <div className="flex items-center gap-6 relative z-10">
-            <div className="w-20 h-20 bg-white/20 backdrop-blur-md rounded-2xl flex flex-col items-center justify-center border border-white/30 shadow-inner">
-              <span className="text-xs font-bold uppercase tracking-wider opacity-80">Rank</span>
-              <span className="text-3xl font-bold">#{leaders.me.rank}</span>
-            </div>
-            <div>
-              <div className="text-blue-100 text-xs font-bold uppercase tracking-wider mb-1">Your Performance</div>
-              <div className="text-3xl font-semibold mb-1">{leaders.me.name}</div>
-              <div className="text-sm text-blue-50 font-medium">{leaders.me.score} Civic Points • Top 15%</div>
-            </div>
-          </div>
-          <div className="hidden md:block text-right relative z-10">
-            <div className="text-4xl font-bold">{leaders.me.resolved}</div>
-            <div className="text-xs text-blue-100 font-bold uppercase tracking-wider">Issues Resolved</div>
-          </div>
+      {/* Placeholder for Leaderboard */}
+      <div className="bg-white rounded-[30px] shadow-xl shadow-gray-200/50 overflow-hidden border border-gray-100 p-12 text-center">
+        <div className="w-20 h-20 bg-yellow-50 rounded-full flex items-center justify-center mx-auto mb-6 text-yellow-600">
+          <Trophy size={40} />
         </div>
-      )}
-
-      {/* Leaderboard Table */}
-      <div className="bg-white rounded-[30px] shadow-xl shadow-gray-200/50 overflow-hidden border border-gray-100">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-[#f5f5f7] border-b border-gray-200">
-              <tr>
-                <th className="px-8 py-5 text-xs font-bold text-[#86868b] uppercase tracking-wider">Rank</th>
-                <th className="px-8 py-5 text-xs font-bold text-[#86868b] uppercase tracking-wider">{activeTab === 'citizens' ? 'Citizen' : 'Institution'}</th>
-                <th className="px-8 py-5 text-xs font-bold text-[#86868b] uppercase tracking-wider text-center">Impact Stats</th>
-                <th className="px-8 py-5 text-xs font-bold text-[#86868b] uppercase tracking-wider text-right">Total Score</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {displayData.map((leader, index) => (
-                <tr key={leader.id} className="hover:bg-[#f5f5f7] transition-colors group">
-                  <td className="px-8 py-5">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm shadow-sm
-                      ${index === 0 ? 'bg-yellow-400 text-yellow-900' : 
-                        index === 1 ? 'bg-gray-300 text-gray-800' : 
-                        index === 2 ? 'bg-orange-300 text-orange-900' : 'bg-white border border-gray-200 text-[#86868b]'}`}>
-                      {index < 3 ? <Trophy size={18} fill="currentColor" className="opacity-80" /> : `#${index + 1}`}
-                    </div>
-                  </td>
-                  <td className="px-8 py-5">
-                    <div className="flex items-center gap-4">
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg text-white shadow-md ${leader.color ? `bg-gradient-to-br ${leader.color}` : (leader.avatar?.includes('bg-') ? leader.avatar : 'bg-gradient-to-br from-blue-500 to-indigo-600')}`}>
-                        {leader.name.charAt(0)}
-                      </div>
-                      <div>
-                        <div className="font-semibold text-[#1d1d1f] text-lg flex items-center gap-2">
-                          {leader.name}
-                          {index === 0 && <Crown size={16} className="text-yellow-500 fill-current" />}
-                        </div>
-                        <div className="text-sm text-[#86868b] font-medium flex items-center gap-1">
-                          <MapPin size={12} /> {leader.city} {leader.badge && <span className="px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 text-[10px] font-bold uppercase tracking-wide ml-2">{leader.badge}</span>}
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-8 py-5">
-                    <div className="flex items-center justify-center gap-8">
-                      <div className="text-center" title="Resolved">
-                        <div className="font-bold text-[#1d1d1f] text-lg">{activeTab === 'citizens' ? leader.resolved : leader.members}</div>
-                        <div className="text-[10px] text-[#86868b] uppercase font-bold tracking-wide">{activeTab === 'citizens' ? 'Fixed' : 'Members'}</div>
-                      </div>
-                      <div className="w-px h-8 bg-gray-100"></div>
-                      <div className="text-center">
-                        <div className="font-bold text-[#1d1d1f] text-lg">{activeTab === 'citizens' ? leader.volunteers : leader.drives}</div>
-                        <div className="text-[10px] text-[#86868b] uppercase font-bold tracking-wide">{activeTab === 'citizens' ? 'Drives' : 'Hosted'}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-8 py-5 text-right">
-                    <div className="font-mono font-bold text-[#0071e3] text-xl">{leader.score.toLocaleString()}</div>
-                    <div className="text-[10px] text-[#86868b] uppercase font-bold tracking-wide">Points</div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <h3 className="text-2xl font-bold text-[#1d1d1f] mb-3">Rankings Launching Soon</h3>
+        <p className="text-[#86868b] max-w-md mx-auto mb-8">
+          We are setting up the scores. Start reporting issues and organizing drives today to secure your spot when the leaderboard goes live.
+        </p>
+        <Button variant="primary" onClick={() => onBack()}>Start Contributing</Button>
       </div>
 
       {/* Points Breakdown */}
@@ -2324,28 +1986,805 @@ const Crown = ({ size, className }) => (
   </svg>
 );
 
-// Admin Dashboard
-const AdminDashboard = ({ posts, onDelete, onVerify, onDismissFlag, onResolve }) => {
+// Admin Sub-Components
+const AdminSidebar = ({ activeTab, onTabChange }) => (
+  <div className="w-64 bg-white border-r border-gray-200 flex-shrink-0 hidden lg:block min-h-[calc(100vh-4rem)]">
+    <div className="p-6">
+      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Admin Menu</h3>
+      <nav className="space-y-1">
+        {[
+          { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+          { id: 'users', label: 'User Management', icon: Users },
+          { id: 'content', label: 'All Content', icon: FileText },
+          { id: 'pending', label: 'Pending Approval', icon: Clock },
+          { id: 'reports', label: 'Moderation Queue', icon: AlertOctagon },
+          { id: 'chapters', label: 'Chapters', icon: Briefcase },
+          { id: 'settings', label: 'System Settings', icon: Zap },
+          { id: 'audit', label: 'Audit Log', icon: BookOpen },
+        ].map(item => (
+          <button
+            key={item.id}
+            onClick={() => onTabChange(item.id)}
+            className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-xl transition-colors
+              ${activeTab === item.id ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            <item.icon size={18} />
+            {item.label}
+          </button>
+        ))}
+      </nav>
+    </div>
+  </div>
+);
+
+const AdminOverview = ({ stats }) => (
+  <div className="space-y-6 animate-in fade-in">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {[
+        { label: 'Total Users', value: stats.totalUsers, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
+        { label: 'Active Reports', value: stats.activeReports, icon: FileText, color: 'text-orange-600', bg: 'bg-orange-50' },
+        { label: 'Resolved Issues', value: stats.resolvedIssues, icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50' },
+        { label: 'Pending Chapters', value: stats.pendingChapters, icon: Briefcase, color: 'text-purple-600', bg: 'bg-purple-50' },
+      ].map((stat, i) => (
+        <div key={i} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className={`p-3 rounded-xl ${stat.bg} ${stat.color}`}>
+              <stat.icon size={20} />
+            </div>
+            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total</span>
+          </div>
+          <div className="text-3xl font-bold text-gray-900">{stat.value}</div>
+          <div className="text-sm text-gray-500 mt-1">{stat.label}</div>
+        </div>
+      ))}
+    </div>
+    
+    <div className="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm">
+      <h3 className="font-bold text-gray-900 mb-4">System Health</h3>
+      <div className="space-y-4">
+        <div>
+          <div className="flex justify-between text-sm mb-1">
+            <span className="text-gray-600">Server Load</span>
+            <span className="text-green-600 font-medium">Normal (24%)</span>
+          </div>
+          <div className="h-2 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-green-500 w-[24%]"></div></div>
+        </div>
+        <div>
+          <div className="flex justify-between text-sm mb-1">
+            <span className="text-gray-600">Database Storage</span>
+            <span className="text-blue-600 font-medium">45% Used</span>
+          </div>
+          <div className="h-2 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-blue-500 w-[45%]"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+const AdminUsers = ({ users, onBan, onSelectUser, onBulkBan }) => {
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterStatus, setFilterStatus] = useState('All');
+  const [sortConfig, setSortConfig] = useState({ key: 'joinedDate', direction: 'desc' });
+  const ITEMS_PER_PAGE = 10;
+
+  const filteredUsers = users.filter(u => {
+    const matchesSearch = u.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          u.email.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesFilter = filterStatus === 'All' || u.status === filterStatus.toLowerCase();
+    return matchesSearch && matchesFilter;
+  });
+
+  const sortedUsers = [...filteredUsers].sort((a, b) => {
+    if (a[sortConfig.key] < b[sortConfig.key]) {
+      return sortConfig.direction === 'asc' ? -1 : 1;
+    }
+    if (a[sortConfig.key] > b[sortConfig.key]) {
+      return sortConfig.direction === 'asc' ? 1 : -1;
+    }
+    return 0;
+  });
+
+  const totalPages = Math.ceil(sortedUsers.length / ITEMS_PER_PAGE);
+  const paginatedUsers = sortedUsers.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const isPageSelected = paginatedUsers.length > 0 && paginatedUsers.every(u => selectedIds.includes(u.id));
+
+  const handleSelectAll = (e) => {
+    const pageIds = paginatedUsers.map(u => u.id);
+    if (e.target.checked) {
+      setSelectedIds(prev => [...new Set([...prev, ...pageIds])]);
+    } else {
+      setSelectedIds(prev => prev.filter(id => !pageIds.includes(id)));
+    }
+  };
+
+  const handleSelect = (id) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
+
+  const requestSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const handleExportCSV = () => {
+    const headers = ['ID', 'Name', 'Email', 'Role', 'Status', 'Joined Date'];
+    const csvContent = [
+        headers.join(','),
+        ...sortedUsers.map(u => [
+            u.id,
+            `"${u.name.replace(/"/g, '""')}"`,
+            `"${u.email.replace(/"/g, '""')}"`,
+            u.role,
+            u.status,
+            `"${u.joinedDate}"`
+        ].join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `users_export_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
+
+  const renderSortIcon = (column) => {
+    if (sortConfig.key !== column) return <div className="w-3 h-3 opacity-0"></div>;
+    return <ChevronRight size={12} className={`transition-transform ${sortConfig.direction === 'asc' ? '-rotate-90' : 'rotate-90'}`} />;
+  };
+
+  return (
+  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in">
+    <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row gap-4 justify-between items-center bg-gray-50/50">
+       <div className="relative w-full sm:w-64">
+          <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
+          <input 
+            type="text" 
+            placeholder="Search users..." 
+            className="w-full pl-9 pr-4 py-2 rounded-xl bg-white border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+          />
+       </div>
+       <div className="flex items-center gap-3">
+         <select 
+            className="px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+            value={filterStatus}
+            onChange={(e) => { setFilterStatus(e.target.value); setCurrentPage(1); }}
+         >
+            <option value="All">All Status</option>
+            <option value="Active">Active</option>
+            <option value="Banned">Banned</option>
+         </select>
+         <button onClick={handleExportCSV} className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-gray-200 bg-white" title="Export Users">
+            <Download size={16} />
+         </button>
+       </div>
+    </div>
+    {selectedIds.length > 0 && (
+      <div className="p-4 bg-blue-50 border-b border-blue-100 flex justify-between items-center">
+        <span className="text-sm text-blue-800 font-medium">{selectedIds.length} users selected</span>
+        <div className="flex gap-2">
+           <button onClick={() => setSelectedIds([])} className="text-xs text-blue-600 hover:text-blue-800 font-medium px-3 py-1.5">Cancel</button>
+           <button 
+             onClick={() => { if(window.confirm(`Ban ${selectedIds.length} users?`)) { onBulkBan(selectedIds); setSelectedIds([]); } }} 
+             className="bg-red-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-red-700 transition-colors flex items-center gap-1"
+           >
+             <Trash2 size={12} /> Ban Selected
+           </button>
+        </div>
+      </div>
+    )}
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm text-left">
+        <thead className="bg-gray-50 text-gray-500 font-medium border-b border-gray-100">
+          <tr>
+            <th className="px-6 py-4 w-10">
+              <input type="checkbox" onChange={handleSelectAll} checked={isPageSelected} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+            </th>
+            <th className="px-6 py-4 cursor-pointer hover:bg-gray-50 transition-colors select-none" onClick={() => requestSort('name')}>
+              <div className="flex items-center gap-1">User {renderSortIcon('name')}</div>
+            </th>
+            <th className="px-6 py-4 cursor-pointer hover:bg-gray-50 transition-colors select-none" onClick={() => requestSort('role')}>
+              <div className="flex items-center gap-1">Role {renderSortIcon('role')}</div>
+            </th>
+            <th className="px-6 py-4 cursor-pointer hover:bg-gray-50 transition-colors select-none" onClick={() => requestSort('status')}>
+              <div className="flex items-center gap-1">Status {renderSortIcon('status')}</div>
+            </th>
+            <th className="px-6 py-4 cursor-pointer hover:bg-gray-50 transition-colors select-none" onClick={() => requestSort('joinedDate')}>
+              <div className="flex items-center gap-1">Joined {renderSortIcon('joinedDate')}</div>
+            </th>
+            <th className="px-6 py-4 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {paginatedUsers.map(u => (
+            <tr key={u.id} className={`hover:bg-gray-50 cursor-pointer ${selectedIds.includes(u.id) ? 'bg-blue-50/30' : ''}`} onClick={() => onSelectUser(u)}>
+              <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                <input type="checkbox" checked={selectedIds.includes(u.id)} onChange={() => handleSelect(u.id)} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+              </td>
+              <td className="px-6 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-600">
+                    {u.name.charAt(0)}
+                  </div>
+                  <div>
+                    <div className="font-medium text-gray-900">{u.name}</div>
+                    <div className="text-xs text-gray-500">{u.email}</div>
+                  </div>
+                </div>
+              </td>
+              <td className="px-6 py-4">
+                <Badge className={u.role === 'admin' ? 'bg-purple-100 text-purple-700' : u.role === 'moderator' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}>
+                  {u.role}
+                </Badge>
+              </td>
+              <td className="px-6 py-4">
+                <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium
+                  ${u.status === 'banned' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+                  {u.status === 'banned' ? 'Banned' : 'Active'}
+                </span>
+              </td>
+              <td className="px-6 py-4 text-gray-500">{u.joinedDate}</td>
+              <td className="px-6 py-4 text-right space-x-2">
+                <button onClick={(e) => { e.stopPropagation(); onBan(u.id); }} className="text-red-600 hover:underline text-xs font-medium">
+                  {u.status === 'banned' ? 'Unban' : 'Ban'}
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {paginatedUsers.length === 0 && (
+        <div className="p-8 text-center text-gray-500 text-sm">
+          No users found matching your search.
+        </div>
+      )}
+    </div>
+    
+    {/* Pagination Controls */}
+    {totalPages > 1 && (
+        <div className="p-4 border-t border-gray-100 flex items-center justify-between bg-gray-50/50">
+            <button 
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <span className="text-xs text-gray-500">Page {currentPage} of {totalPages}</span>
+            <button 
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+        </div>
+    )}
+  </div>
+  );
+};
+
+const AdminUserDetailModal = ({ user, posts, onClose, onBan }) => {
+  if (!user) return null;
+  const userPosts = posts.filter(p => p.authorId === user.id);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-100 flex items-center justify-center p-4 animate-in fade-in">
+      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+        <div className="sticky top-0 bg-white/80 backdrop-blur-md border-b border-gray-100 p-4 flex justify-between items-center z-10">
+          <h3 className="font-bold text-lg flex items-center gap-2"><User size={18} /> User Profile & Activity</h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full"><X size={20} /></button>
+        </div>
+        <div className="p-6">
+          <div className="flex items-center gap-4 mb-6">
+            <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center text-2xl font-bold text-gray-600">{user.name.charAt(0)}</div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">{user.name}</h2>
+              <p className="text-sm text-gray-500">{user.email}</p>
+              <Badge className={`mt-2 ${user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700'}`}>{user.role}</Badge>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-4 mb-6 text-center">
+            <div className="bg-gray-50 p-3 rounded-lg"><div className="font-bold text-xl">{userPosts.length}</div><div className="text-xs text-gray-500">Reports</div></div>
+            <div className="bg-gray-50 p-3 rounded-lg"><div className="font-bold text-xl">{userPosts.reduce((acc, p) => acc + p.upvotes, 0)}</div><div className="text-xs text-gray-500">Upvotes</div></div>
+            <div className="bg-gray-50 p-3 rounded-lg"><div className="font-bold text-xl">{userPosts.filter(p => p.status === 'Resolved').length}</div><div className="text-xs text-gray-500">Resolved</div></div>
+          </div>
+
+          <h4 className="font-bold text-gray-900 mb-2">Recent Activity</h4>
+          <div className="border border-gray-100 rounded-xl max-h-64 overflow-y-auto">
+            {userPosts.length > 0 ? userPosts.map(p => (
+              <div key={p.id} className="p-3 border-b border-gray-100 last:border-0">
+                <p className="font-medium text-sm text-gray-800 truncate">{p.title}</p>
+                <p className="text-xs text-gray-400">{p.date} • {p.status}</p>
+              </div>
+            )) : <p className="p-8 text-center text-sm text-gray-400">No activity found.</p>}
+          </div>
+
+          <div className="mt-6 pt-6 border-t border-gray-100">
+            <h4 className="font-bold text-red-600 mb-2">Admin Actions</h4>
+            <button onClick={() => { onBan(user.id); onClose(); }} className="px-4 py-2 text-sm font-medium bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors">
+              {user.status === 'banned' ? 'Un-Ban User' : 'Ban User'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Full Admin Dashboard
+const AdminDashboard = ({ posts, users, chapters, settings, auditLog, onDelete, onVerify, onDismissFlag, onResolve, onEditPost, onBanUser, onVerifyChapter, onDeleteChapter, onUpdateSettings, onBulkDelete, onBulkUpdateStatus, onBulkBan }) => {
+  const [activeTab, setActiveTab] = useState('overview');
+  const [selectedUser, setSelectedUser] = useState(null);
   const flaggedPosts = posts.filter(p => p.flags > 0);
   const pendingPosts = posts.filter(p => p.status === 'Open' && p.flags === 0);
 
-  return (
-    <div className="max-w-[980px] mx-auto py-12 px-6">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><LayoutDashboard className="text-blue-600" /> Moderation Dashboard <FeatureInfo title="Moderation Tools" content="Admins use this to review flagged content, verify reports, and mark issues as resolved. This ensures platform integrity." /></h2>
-          <p className="text-gray-500">Review flagged content and verify reports.</p>
+  const AdminAllContent = ({ posts, onDelete, onEditPost, onBulkDelete, onBulkUpdateStatus }) => {
+    const [selectedIds, setSelectedIds] = useState([]);
+    const [showConfirmModal, setShowConfirmModal] = useState(false);
+    const [pendingAction, setPendingAction] = useState({ type: '', value: null });
+    const [filterStatus, setFilterStatus] = useState('All');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [dateRange, setDateRange] = useState({ start: '', end: '' });
+    const [sortConfig, setSortConfig] = useState({ key: 'id', direction: 'desc' });
+    const [currentPage, setCurrentPage] = useState(1);
+    const ITEMS_PER_PAGE = 10;
+
+    const filteredPosts = posts.filter(p => {
+      const matchesStatus = filterStatus === 'All' || p.status === filterStatus;
+      const matchesSearch = p.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                            p.author.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            String(p.id).includes(searchQuery);
+      
+      let matchesDate = true;
+      if (dateRange.start) {
+         matchesDate = matchesDate && p.id >= new Date(dateRange.start).getTime();
+      }
+      if (dateRange.end) {
+         matchesDate = matchesDate && p.id <= new Date(dateRange.end).setHours(23, 59, 59, 999);
+      }
+
+      return matchesStatus && matchesSearch && matchesDate;
+    });
+
+    const sortedPosts = [...filteredPosts].sort((a, b) => {
+      if (a[sortConfig.key] < b[sortConfig.key]) {
+        return sortConfig.direction === 'asc' ? -1 : 1;
+      }
+      if (a[sortConfig.key] > b[sortConfig.key]) {
+        return sortConfig.direction === 'asc' ? 1 : -1;
+      }
+      return 0;
+    });
+
+    const totalPages = Math.ceil(sortedPosts.length / ITEMS_PER_PAGE);
+    const paginatedPosts = sortedPosts.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+    const isPageSelected = paginatedPosts.length > 0 && paginatedPosts.every(p => selectedIds.includes(p.id));
+    const isAllSelected = sortedPosts.length > 0 && selectedIds.length === sortedPosts.length;
+
+    const handleSelectAll = (e) => {
+      if (e.target.checked) {
+        setSelectedIds(sortedPosts.map(p => p.id));
+      } else {
+        setSelectedIds([]);
+      }
+    };
+
+    const handleSelectPage = (e) => {
+      const pageIds = paginatedPosts.map(p => p.id);
+      if (e.target.checked) {
+        setSelectedIds(prev => [...new Set([...prev, ...pageIds])]);
+      } else {
+        setSelectedIds(prev => prev.filter(id => !pageIds.includes(id)));
+      }
+    };
+
+    const handleSelect = (id) => {
+      setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+    };
+
+    const handleBulkDelete = () => {
+      setPendingAction({ type: 'delete' });
+      setShowConfirmModal(true);
+    };
+
+    const requestSort = (key) => {
+      let direction = 'asc';
+      if (sortConfig.key === key && sortConfig.direction === 'asc') {
+        direction = 'desc';
+      }
+      setSortConfig({ key, direction });
+    };
+
+    const handleExportCSV = () => {
+      const headers = ['ID', 'Title', 'Author', 'Status', 'Date', 'City', 'Upvotes'];
+      const csvContent = [
+          headers.join(','),
+          ...sortedPosts.map(p => [
+              p.id,
+              `"${p.title.replace(/"/g, '""')}"`,
+              `"${p.author.replace(/"/g, '""')}"`,
+              p.status,
+              `"${p.date}"`,
+              `"${p.city}"`,
+              p.upvotes
+          ].join(','))
+      ].join('\n');
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `admin_export_${new Date().toISOString().split('T')[0]}.csv`;
+      link.click();
+    };
+
+    const renderSortIcon = (column) => {
+      if (sortConfig.key !== column) return <div className="w-3 h-3 opacity-0"></div>;
+      return <ChevronRight size={12} className={`transition-transform ${sortConfig.direction === 'asc' ? '-rotate-90' : 'rotate-90'}`} />;
+    };
+
+    return (
+    <div className="bg-white rounded-[30px] shadow-sm overflow-hidden animate-in fade-in">
+      <div className="p-6 border-b border-gray-100 flex flex-col xl:flex-row justify-between items-center bg-gray-50/50 gap-4">
+        <div className="flex items-center gap-4">
+          <div>
+            <h3 className="font-bold text-gray-900">Master Content Database</h3>
+            <p className="text-xs text-gray-500">Full access to view, edit, or delete any record.</p>
+          </div>
+          {selectedIds.length > 0 && (
+             <div className="flex items-center gap-2">
+               <button 
+                 onClick={() => setSelectedIds([])}
+                 className="text-xs text-gray-500 font-bold hover:text-gray-900 hover:bg-gray-100 px-3 py-1.5 rounded-lg transition-colors"
+               >
+                 Clear
+               </button>
+               {selectedIds.length < sortedPosts.length && (
+                 <button 
+                   onClick={() => setSelectedIds(sortedPosts.map(p => p.id))}
+                   className="text-xs text-blue-600 font-bold hover:underline mr-2 bg-blue-50 px-2 py-1 rounded"
+                 >
+                   Select all {sortedPosts.length} matching
+                 </button>
+               )}
+               <select
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      setPendingAction({ type: 'update', value: e.target.value });
+                      setShowConfirmModal(true);
+                      e.target.value = '';
+                    }
+                  }}
+                  className="bg-white border border-gray-300 text-gray-700 text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                  defaultValue=""
+               >
+                  <option value="" disabled>Mark as...</option>
+                  <option value="Open">Open</option>
+                  <option value="Verified">Verified</option>
+                  <option value="Resolved">Resolved</option>
+                  <option value="Action Taken">Action Taken</option>
+               </select>
+             <button onClick={handleBulkDelete} className="bg-red-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-red-700 transition-colors flex items-center gap-1">
+               <Trash2 size={12} /> Delete {selectedIds.length} Selected
+             </button>
+             </div>
+          )}
         </div>
-        <div className="flex gap-2">
-          <Badge className="bg-red-100 text-red-700 border border-red-200">{flaggedPosts.length} Flagged</Badge>
-          <Badge className="bg-orange-100 text-orange-700 border border-orange-200">{pendingPosts.length} Pending</Badge>
+        
+        <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-2 py-1">
+                <span className="text-xs text-gray-400">Date:</span>
+                <input 
+                    type="date" 
+                    className="text-xs outline-none bg-transparent text-gray-600 w-24"
+                    value={dateRange.start}
+                    onChange={(e) => { setDateRange({...dateRange, start: e.target.value}); setCurrentPage(1); }}
+                />
+                <span className="text-gray-300">-</span>
+                <input 
+                    type="date" 
+                    className="text-xs outline-none bg-transparent text-gray-600 w-24"
+                    value={dateRange.end}
+                    onChange={(e) => { setDateRange({...dateRange, end: e.target.value}); setCurrentPage(1); }}
+                />
+            </div>
+
+            <div className="relative">
+                <Search className="absolute left-3 top-2 text-gray-400" size={14} />
+                <input 
+                    type="text" 
+                    placeholder="Search content..." 
+                    value={searchQuery}
+                    onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+                    className="pl-9 pr-4 py-1.5 rounded-lg border border-gray-200 text-xs font-medium bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 w-32 md:w-48"
+                />
+            </div>
+            <select 
+                value={filterStatus} 
+                onChange={(e) => { setFilterStatus(e.target.value); setCurrentPage(1); }}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+                <option value="All">All Status</option>
+                <option value="Open">Open</option>
+                <option value="Verified">Verified</option>
+                <option value="Resolved">Resolved</option>
+                <option value="Action Taken">Action Taken</option>
+            </select>
+            <button onClick={handleExportCSV} className="p-1.5 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-gray-200 bg-white" title="Export CSV">
+                <Download size={16} />
+            </button>
+            <Badge className="bg-gray-900 text-white">{filteredPosts.length} Records</Badge>
         </div>
       </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm text-left">
+          <thead className="bg-white text-gray-500 font-medium border-b border-gray-100">
+            <tr>
+              <th className="px-6 py-3 w-28">
+                <div className="flex flex-col gap-1">
+                  <label className="flex items-center gap-1 text-[10px] cursor-pointer select-none hover:text-gray-700">
+                    <input type="checkbox" onChange={handleSelectPage} checked={isPageSelected} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5" />
+                    Select Page
+                  </label>
+                  <label className="flex items-center gap-1 text-[10px] cursor-pointer select-none hover:text-gray-700">
+                    <input type="checkbox" onChange={handleSelectAll} checked={isAllSelected} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5" />
+                    Select All
+                  </label>
+                </div>
+              </th>
+              <th className="px-6 py-3 cursor-pointer hover:bg-gray-50 transition-colors select-none" onClick={() => requestSort('id')}>
+                <div className="flex items-center gap-1">ID {renderSortIcon('id')}</div>
+              </th>
+              <th className="px-6 py-3 cursor-pointer hover:bg-gray-50 transition-colors select-none" onClick={() => requestSort('title')}>
+                <div className="flex items-center gap-1">Title {renderSortIcon('title')}</div>
+              </th>
+              <th className="px-6 py-3 cursor-pointer hover:bg-gray-50 transition-colors select-none" onClick={() => requestSort('author')}>
+                <div className="flex items-center gap-1">Author {renderSortIcon('author')}</div>
+              </th>
+              <th className="px-6 py-3 cursor-pointer hover:bg-gray-50 transition-colors select-none" onClick={() => requestSort('status')}>
+                <div className="flex items-center gap-1">Status {renderSortIcon('status')}</div>
+              </th>
+              <th className="px-6 py-3 text-right">Super Admin Control</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {paginatedPosts.map(post => (
+              <tr key={post.id} className={`hover:bg-gray-50 ${selectedIds.includes(post.id) ? 'bg-blue-50/30' : ''}`}>
+                <td className="px-6 py-3">
+                  <input type="checkbox" checked={selectedIds.includes(post.id)} onChange={() => handleSelect(post.id)} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                </td>
+                <td className="px-6 py-3 font-mono text-xs text-gray-400">#{post.id}</td>
+                <td className="px-6 py-3 font-medium text-gray-900 max-w-xs truncate" title={post.title}>{post.title}</td>
+                <td className="px-6 py-3 text-gray-600">{post.author}</td>
+                <td className="px-6 py-3">
+                   <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                      post.status === 'Resolved' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-100 text-gray-600 border-gray-200'
+                   }`}>{post.status}</span>
+                </td>
+                <td className="px-6 py-3 text-right space-x-2">
+                  <button onClick={() => onEditPost(post)} className="text-blue-600 hover:underline text-xs font-bold uppercase tracking-wider">Edit</button>
+                  <button onClick={() => onDelete(post.id)} className="text-red-600 hover:underline text-xs font-bold uppercase tracking-wider">Delete</button>
+                </td>
+              </tr>
+            ))}
+            {paginatedPosts.length === 0 && (
+                <tr>
+                    <td colSpan="6" className="px-6 py-8 text-center text-gray-500">No records found matching filter.</td>
+                </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+          <div className="p-4 border-t border-gray-100 flex items-center justify-between bg-gray-50/50">
+              <button 
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <span className="text-xs text-gray-500">Page {currentPage} of {totalPages}</span>
+              <button 
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+          </div>
+      )}
+      
+      {showConfirmModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-100 flex items-center justify-center p-4 animate-in fade-in">
+            <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl transform transition-all scale-100">
+                <h3 className="font-bold text-lg mb-2 text-gray-900">Confirm Bulk Action</h3>
+                <p className="text-gray-600 text-sm mb-6">
+                    {pendingAction.type === 'delete' 
+                        ? `Are you sure you want to delete ${selectedIds.length} items? This cannot be undone.`
+                        : `Update status of ${selectedIds.length} items to '${pendingAction.value}'?`
+                    }
+                </p>
+                <div className="flex justify-end gap-3">
+                    <button onClick={() => setShowConfirmModal(false)} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+                    <button 
+                        onClick={() => {
+                            if (pendingAction.type === 'delete') onBulkDelete(selectedIds);
+                            else onBulkUpdateStatus(selectedIds, pendingAction.value);
+                            setSelectedIds([]);
+                            setShowConfirmModal(false);
+                        }} 
+                        className={`px-4 py-2 text-sm font-medium text-white rounded-lg shadow-sm transition-colors ${pendingAction.type === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}`}
+                    >
+                        Confirm
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+    </div>
+  );
+  };
 
+  const PendingContent = () => {
+    const [modalConfig, setModalConfig] = useState({ show: false, type: null, post: null });
+    const [rejectionReason, setRejectionReason] = useState('');
+    const [sortConfig, setSortConfig] = useState({ key: 'date', direction: 'desc' });
+    const [searchQuery, setSearchQuery] = useState('');
+
+    const filteredPendingPosts = pendingPosts.filter(p => 
+      p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.author.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    const sortedPendingPosts = [...filteredPendingPosts].sort((a, b) => {
+      if (a[sortConfig.key] < b[sortConfig.key]) {
+        return sortConfig.direction === 'asc' ? -1 : 1;
+      }
+      if (a[sortConfig.key] > b[sortConfig.key]) {
+        return sortConfig.direction === 'asc' ? 1 : -1;
+      }
+      return 0;
+    });
+
+    const requestSort = (key) => {
+      let direction = 'asc';
+      if (sortConfig.key === key && sortConfig.direction === 'asc') {
+        direction = 'desc';
+      }
+      setSortConfig({ key, direction });
+    };
+
+    const renderSortIcon = (column) => {
+      if (sortConfig.key !== column) return <div className="w-3 h-3 opacity-0"></div>;
+      return <ChevronRight size={12} className={`transition-transform ${sortConfig.direction === 'asc' ? '-rotate-90' : 'rotate-90'}`} />;
+    };
+
+    const handleActionClick = (type, post) => {
+      setModalConfig({ show: true, type, post });
+      setRejectionReason('');
+    };
+
+    const confirmAction = async () => {
+      const { type, post } = modalConfig;
+      if (type === 'approve') {
+        await onVerify(post.id);
+      } else if (type === 'reject') {
+        await onDelete(post.id, rejectionReason);
+      }
+      setModalConfig({ show: false, type: null, post: null });
+      setRejectionReason('');
+    };
+
+    return (
+      <div className="bg-white rounded-[30px] shadow-sm overflow-hidden animate-in fade-in">
+        <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row justify-between items-center gap-4">
+          <div>
+            <h3 className="font-bold text-gray-900">Pending Approval Queue</h3>
+            <p className="text-xs text-gray-500">Review and verify new reports.</p>
+          </div>
+          <div className="flex items-center gap-3">
+             <div className="relative">
+                <Search className="absolute left-3 top-2.5 text-gray-400" size={14} />
+                <input 
+                  type="text" 
+                  placeholder="Search pending..." 
+                  className="pl-9 pr-4 py-2 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-48 bg-white"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+             </div>
+             <Badge className="bg-orange-100 text-orange-700 border-orange-200">{pendingPosts.length} Pending</Badge>
+          </div>
+        </div>
+        <table className="w-full text-sm text-left">
+          <thead className="bg-white text-gray-500 font-medium border-b border-gray-100">
+            <tr>
+              <th className="px-6 py-4">Title / ID</th>
+              <th className="px-6 py-4 cursor-pointer hover:bg-gray-50 transition-colors select-none" onClick={() => requestSort('author')}>
+                <div className="flex items-center gap-1">Author {renderSortIcon('author')}</div>
+              </th>
+              <th className="px-6 py-4 cursor-pointer hover:bg-gray-50 transition-colors select-none" onClick={() => requestSort('date')}>
+                <div className="flex items-center gap-1">Date {renderSortIcon('date')}</div>
+              </th>
+              <th className="px-6 py-4 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {sortedPendingPosts.map(post => (
+              <tr key={post.id} className="hover:bg-gray-50 group transition-colors">
+                <td className="px-6 py-4 max-w-xs">
+                  <div className="font-medium text-gray-900 line-clamp-1">{post.title}</div>
+                  <div className="text-xs text-gray-400">ID: #{post.id}</div>
+                </td>
+                <td className="px-6 py-4 text-gray-600">{post.author}</td>
+                <td className="px-6 py-4 text-gray-500">{post.date}</td>
+                <td className="px-6 py-4 text-right space-x-2">
+                  <button onClick={() => handleActionClick('approve', post)} className="text-green-600 hover:text-green-800 font-medium text-xs bg-green-50 px-3 py-1.5 rounded hover:bg-green-100 transition-colors">Approve</button>
+                  <button onClick={() => handleActionClick('reject', post)} className="text-red-600 hover:text-red-800 font-medium text-xs bg-red-50 px-3 py-1.5 rounded hover:bg-red-100 transition-colors">Reject</button>
+                </td>
+              </tr>
+            ))}
+            {pendingPosts.length === 0 && (
+              <tr>
+                <td colSpan="4" className="px-6 py-8 text-center text-gray-500">No pending posts.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+
+        {modalConfig.show && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-100 animate-in fade-in">
+            <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
+               <h3 className="font-bold text-lg mb-2 text-gray-900">
+                 {modalConfig.type === 'approve' ? 'Approve Report?' : 'Reject Report?'}
+               </h3>
+               <p className="text-gray-600 text-sm mb-6">
+                 {modalConfig.type === 'approve' 
+                   ? `Are you sure you want to verify "${modalConfig.post.title}"? This will make it visible on the public feed.`
+                   : `Are you sure you want to reject "${modalConfig.post.title}"? This will permanently delete the report.`
+                 }
+               </p>
+               {modalConfig.type === 'reject' && (
+                 <div className="mb-6">
+                   <label className="block text-xs font-bold text-gray-700 mb-2">Reason for Rejection (Optional)</label>
+                   <textarea 
+                     className="w-full p-3 rounded-xl bg-gray-50 border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 resize-none"
+                     rows="3"
+                     placeholder="e.g. Duplicate report, Lack of evidence..."
+                     value={rejectionReason}
+                     onChange={(e) => setRejectionReason(e.target.value)}
+                   />
+                 </div>
+               )}
+               <div className="flex justify-end gap-3">
+                 <button onClick={() => setModalConfig({ show: false, type: null, post: null })} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+                 <button onClick={confirmAction} className={`px-4 py-2 text-sm font-medium text-white rounded-lg shadow-sm transition-colors ${modalConfig.type === 'reject' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}>
+                   {modalConfig.type === 'approve' ? 'Approve' : 'Reject'}
+                 </button>
+               </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const ReportsContent = () => (
+    <div className="animate-in fade-in">
       {flaggedPosts.length > 0 && (
         <div className="mb-8">
            <h3 className="font-bold text-red-800 mb-3 flex items-center gap-2"><AlertOctagon size={18} /> High Risk / Flagged</h3>
-           <div className="bg-red-50 rounded-[24px] border border-red-100 overflow-hidden">
+           <div className="bg-red-50 rounded-3xl border border-red-100 overflow-hidden">
              {flaggedPosts.map(post => (
                <div key={post.id} className="p-4 border-b border-red-100 last:border-0 flex items-center justify-between">
                  <div>
@@ -2353,8 +2792,9 @@ const AdminDashboard = ({ posts, onDelete, onVerify, onDismissFlag, onResolve })
                    <div className="text-xs text-red-600 font-medium">Flags: {post.flags} • ID: {post.id}</div>
                  </div>
                  <div className="flex gap-2">
-                   <Button variant="secondary" className="!py-1 !px-2 text-xs" onClick={() => onDismissFlag(post.id)}>Dismiss</Button>
-                   <Button variant="danger" className="!py-1 !px-2 text-xs" onClick={() => onDelete(post.id)}>Remove</Button>
+                   <Button variant="ghost" className="py-1! px-2! text-xs" onClick={() => onEditPost(post)}>Edit</Button>
+                   <Button variant="secondary" className="py-1! px-2! text-xs" onClick={() => onDismissFlag(post.id)}>Dismiss</Button>
+                   <Button variant="danger" className="py-1! px-2! text-xs" onClick={() => onDelete(post.id)}>Remove</Button>
                  </div>
                </div>
              ))}
@@ -2362,7 +2802,7 @@ const AdminDashboard = ({ posts, onDelete, onVerify, onDismissFlag, onResolve })
         </div>
       )}
 
-      <div className="bg-white rounded-[30px] shadow-sm overflow-hidden">
+      <div className="bg-white rounded-3xl shadow-sm overflow-hidden animate-in fade-in">
         <table className="w-full text-sm text-left">
           <thead className="bg-[#f5f5f7] text-[#86868b] font-medium border-b border-gray-100">
             <tr>
@@ -2397,9 +2837,6 @@ const AdminDashboard = ({ posts, onDelete, onVerify, onDismissFlag, onResolve })
                   {post.status === 'Verified' && (
                     <button onClick={() => onResolve(post.id)} className="text-green-600 hover:text-green-800 font-medium text-xs bg-green-50 px-3 py-1.5 rounded hover:bg-green-100 transition-colors">Resolve</button>
                   )}
-                  {post.status === 'Verified' && (
-                    <button onClick={() => onResolve(post.id)} className="text-green-600 hover:text-green-800 font-medium text-xs bg-green-50 px-3 py-1.5 rounded hover:bg-green-100 transition-colors">Resolve</button>
-                  )}
                   <button onClick={() => onDelete(post.id)} className="text-red-600 hover:text-red-800 font-medium text-xs bg-red-50 px-3 py-1.5 rounded hover:bg-red-100 transition-colors">Remove</button>
                 </td>
               </tr>
@@ -2409,13 +2846,245 @@ const AdminDashboard = ({ posts, onDelete, onVerify, onDismissFlag, onResolve })
       </div>
     </div>
   );
+
+  const ChaptersContent = () => (
+    <div className="bg-white rounded-[30px] shadow-sm overflow-hidden animate-in fade-in">
+      <table className="w-full text-sm text-left">
+        <thead className="bg-gray-50 text-gray-500 font-medium border-b border-gray-100">
+          <tr>
+            <th className="px-6 py-4">Chapter Name</th>
+            <th className="px-6 py-4">Type</th>
+            <th className="px-6 py-4">City</th>
+            <th className="px-6 py-4">Status</th>
+            <th className="px-6 py-4 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {chapters.map(chapter => (
+            <tr key={chapter.id} className="hover:bg-gray-50">
+              <td className="px-6 py-4 font-medium text-gray-900">{chapter.name}</td>
+              <td className="px-6 py-4 text-gray-500">{chapter.type}</td>
+              <td className="px-6 py-4 text-gray-500">{chapter.city}</td>
+              <td className="px-6 py-4">
+                {chapter.verified ? (
+                  <Badge className="bg-green-100 text-green-700">Verified</Badge>
+                ) : (
+                  <Badge className="bg-orange-100 text-orange-700">Pending</Badge>
+                )}
+              </td>
+              <td className="px-6 py-4 text-right space-x-2">
+                {!chapter.verified && (
+                  <button onClick={() => onVerifyChapter(chapter.id)} className="text-blue-600 hover:underline text-xs font-medium">Approve</button>
+                )}
+                <button onClick={() => onDeleteChapter(chapter.id)} className="text-red-600 hover:underline text-xs font-medium">Remove</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const SettingsContent = () => {
+    const [localSettings, setLocalSettings] = useState(settings);
+
+    const handleToggle = (key) => {
+      setLocalSettings(prev => ({ ...prev, [key]: !prev[key] }));
+    };
+
+    const handleChange = (key, value) => {
+      setLocalSettings(prev => ({ ...prev, [key]: value }));
+    };
+
+    const saveSettings = () => {
+      onUpdateSettings(localSettings);
+    };
+
+    return (
+      <div className="bg-white rounded-[30px] shadow-sm p-8 animate-in fade-in">
+        <h3 className="text-xl font-bold text-gray-900 mb-6">System Configuration</h3>
+        
+        <div className="space-y-6 max-w-2xl">
+          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
+            <div>
+              <div className="font-bold text-gray-900">Maintenance Mode</div>
+              <div className="text-xs text-gray-500">Disable access for non-admin users</div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" className="sr-only peer" checked={localSettings.maintenanceMode} onChange={() => handleToggle('maintenanceMode')} />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
+          </div>
+
+          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
+            <div>
+              <div className="font-bold text-gray-900">Allow New Signups</div>
+              <div className="text-xs text-gray-500">Toggle user registration</div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" className="sr-only peer" checked={localSettings.allowSignups} onChange={() => handleToggle('allowSignups')} />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
+          </div>
+
+          <div>
+            <label className="block text-sm font-bold text-gray-900 mb-2">Global Announcement Banner</label>
+            <input 
+              type="text" 
+              className="w-full p-3 rounded-xl bg-gray-50 border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="Enter message to display on top of site..."
+              value={localSettings.globalAnnouncement}
+              onChange={(e) => handleChange('globalAnnouncement', e.target.value)}
+            />
+          </div>
+
+          <Button variant="primary" onClick={saveSettings}>Save Configuration</Button>
+
+          <div className="pt-8 mt-8 border-t border-gray-200">
+            <h4 className="text-sm font-bold text-red-600 mb-4 flex items-center gap-2"><AlertTriangle size={16}/> Super Admin Danger Zone</h4>
+            
+            <div className="space-y-4">
+              <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-between">
+                 <div>
+                   <div className="font-bold text-gray-900">Export Database</div>
+                   <div className="text-xs text-gray-500">Download all posts and users as JSON.</div>
+                 </div>
+                 <Button variant="outline" onClick={() => {
+                    const data = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ posts, users, chapters }, null, 2));
+                    const downloadAnchorNode = document.createElement('a');
+                    downloadAnchorNode.setAttribute("href", data);
+                    downloadAnchorNode.setAttribute("download", "india_act_backup.json");
+                    document.body.appendChild(downloadAnchorNode);
+                    downloadAnchorNode.click();
+                    downloadAnchorNode.remove();
+                 }} icon={Download}>Export Data</Button>
+              </div>
+
+              <div className="p-4 bg-red-50 rounded-xl border border-red-100 flex items-center justify-between">
+                 <div>
+                   <div className="font-bold text-red-900">Factory Reset System</div>
+                   <div className="text-xs text-red-700">Wipes all posts, users, and settings. Cannot be undone.</div>
+                 </div>
+                 <Button variant="danger" onClick={() => {
+                   if(window.confirm('CRITICAL WARNING: This will delete ALL data. Are you sure?')) {
+                     localStorage.clear();
+                     window.location.reload();
+                   }
+                 }}>Reset Everything</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const AuditLogContent = () => (
+    <div className="bg-white rounded-[30px] shadow-sm overflow-hidden animate-in fade-in">
+      <div className="p-6 border-b border-gray-100 bg-gray-50/50">
+        <h3 className="font-bold text-gray-900">Super Admin Audit Trail</h3>
+        <p className="text-xs text-gray-500">Immutable log of all administrative actions.</p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm text-left">
+          <thead className="bg-white text-gray-500 font-medium border-b border-gray-100">
+            <tr>
+              <th className="px-6 py-3">Timestamp</th>
+              <th className="px-6 py-3">Action</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {auditLog.map(log => (
+              <tr key={log.id} className="hover:bg-gray-50">
+                <td className="px-6 py-3 font-mono text-xs text-gray-400">{log.timestamp}</td>
+                <td className="px-6 py-3 font-medium text-gray-700">{log.action}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  const stats = {
+    totalUsers: users.length,
+    activeReports: posts.filter(p => p.status === 'Open').length,
+    resolvedIssues: posts.filter(p => p.status === 'Resolved').length,
+    pendingChapters: chapters.filter(c => !c.verified).length
+  };
+
+  return (
+    <div className="flex min-h-screen bg-gray-50">
+      <AdminSidebar activeTab={activeTab} onTabChange={setActiveTab} />
+      
+      <div className="flex-1 p-6 lg:p-8 overflow-y-auto">
+        {/* Mobile Tab Nav */}
+        <div className="lg:hidden flex overflow-x-auto gap-2 mb-6 pb-2">
+          {['overview', 'users', 'content', 'pending', 'reports', 'chapters', 'settings', 'audit'].map(tab => (
+            <button 
+              key={tab} 
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap ${activeTab === tab ? 'bg-blue-600 text-white' : 'bg-white text-gray-600'}`}
+            >
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900 capitalize flex items-center gap-2">
+              {activeTab === 'reports' ? 'Moderation Queue' : activeTab.replace('-', ' ')}
+            </h2>
+            <p className="text-gray-500 text-sm">Admin Control Panel • {new Date().toLocaleDateString()}</p>
+          </div>
+          {activeTab === 'reports' && <Badge className="bg-red-100 text-red-700 border border-red-200">{flaggedPosts.length} Flagged</Badge>}
+        </div>
+
+        {activeTab === 'overview' && <AdminOverview stats={stats} />}
+        {activeTab === 'users' && <AdminUsers users={users} onBan={onBanUser} onSelectUser={setSelectedUser} onBulkBan={onBulkBan} />}
+        {activeTab === 'content' && <AdminAllContent posts={posts} onDelete={onDelete} onEditPost={onEditPost} onBulkDelete={onBulkDelete} onBulkUpdateStatus={onBulkUpdateStatus} />}
+        {activeTab === 'pending' && <PendingContent />}
+        {activeTab === 'reports' && <ReportsContent />}
+        {activeTab === 'chapters' && <ChaptersContent />}
+        {activeTab === 'settings' && <SettingsContent />}
+        {activeTab === 'audit' && <AuditLogContent />}
+
+        {selectedUser && <AdminUserDetailModal user={selectedUser} posts={posts} onClose={() => setSelectedUser(null)} onBan={onBanUser} />}
+      </div>
+    </div>
+  );
 };
 
 // Share Poster Modal
-const SharePosterModal = ({ post, onClose }) => (
-  <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+const SharePosterModal = ({ post, onClose }) => {
+  const shareUrl = window.location.href;
+  const shareText = `Check out this issue: ${post.title} in ${post.city}. #IndiaAct`;
+
+  const handleShare = (platform) => {
+    let url = '';
+    switch (platform) {
+      case 'whatsapp':
+        url = `https://wa.me/?text=${encodeURIComponent(shareText + ' ' + shareUrl)}`;
+        break;
+      case 'facebook':
+        url = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
+        break;
+      case 'twitter':
+        url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`;
+        break;
+      case 'copy':
+        navigator.clipboard.writeText(`${shareText} ${shareUrl}`);
+        alert('Link copied to clipboard!');
+        return;
+    }
+    if (url) window.open(url, '_blank');
+  };
+
+  return (
+  <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-200 flex items-center justify-center p-4 animate-in fade-in">
     <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95">
-      <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-6 text-white relative overflow-hidden">
+      <div className="bg-linear-to-br from-blue-600 to-indigo-700 p-6 text-white relative overflow-hidden">
         <div className="absolute top-0 right-0 p-4 opacity-10"><Shield size={100} /></div>
         <div className="relative z-10">
           <div className="flex items-center gap-2 mb-4">
@@ -2429,15 +3098,61 @@ const SharePosterModal = ({ post, onClose }) => (
         </div>
       </div>
       <div className="p-6 text-center">
-        <div className="flex justify-center mb-4">
-           <div className="w-32 h-32 bg-gray-100 rounded-lg flex items-center justify-center border-2 border-dashed border-gray-300">
-             <span className="text-xs text-gray-400 font-mono">SCAN TO JOIN</span>
-           </div>
+        <div className="grid grid-cols-4 gap-4 mb-8">
+           <button onClick={() => handleShare('whatsapp')} className="flex flex-col items-center gap-2 group">
+             <div className="w-12 h-12 bg-[#25D366] rounded-full flex items-center justify-center text-white shadow-sm group-hover:scale-110 transition-transform">
+               <MessageCircle size={24} />
+             </div>
+             <span className="text-xs text-gray-600 font-medium">WhatsApp</span>
+           </button>
+           <button onClick={() => handleShare('facebook')} className="flex flex-col items-center gap-2 group">
+             <div className="w-12 h-12 bg-[#1877F2] rounded-full flex items-center justify-center text-white shadow-sm group-hover:scale-110 transition-transform">
+               <Facebook size={24} />
+             </div>
+             <span className="text-xs text-gray-600 font-medium">Facebook</span>
+           </button>
+           <button onClick={() => handleShare('twitter')} className="flex flex-col items-center gap-2 group">
+             <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center text-white shadow-sm group-hover:scale-110 transition-transform">
+               <Twitter size={24} />
+             </div>
+             <span className="text-xs text-gray-600 font-medium">X</span>
+           </button>
+           <button onClick={() => handleShare('copy')} className="flex flex-col items-center gap-2 group">
+             <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 shadow-sm group-hover:scale-110 transition-transform">
+               <LinkIcon size={24} />
+             </div>
+             <span className="text-xs text-gray-600 font-medium">Copy Link</span>
+           </button>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Button variant="outline" onClick={onClose}>Close</Button>
           <Button variant="primary" icon={Download} onClick={() => { alert('Poster downloaded!'); onClose(); }}>Save Image</Button>
         </div>
+      </div>
+    </div>
+  </div>
+  );
+};
+
+const PrivacyPolicyModal = ({ onClose }) => (
+  <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-200 flex items-center justify-center p-4 animate-in fade-in">
+    <div className="bg-white rounded-[30px] w-full max-w-2xl max-h-[80vh] overflow-y-auto shadow-2xl p-8">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold text-gray-900">Privacy Policy</h2>
+        <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full"><X size={20} /></button>
+      </div>
+      <div className="space-y-4 text-gray-600 text-sm leading-relaxed">
+        <p><strong>Effective Date:</strong> {new Date().toLocaleDateString()}</p>
+        <p>Your privacy and safety are our top priorities. This policy outlines how we handle your data on the Act India platform.</p>
+        <h3 className="text-lg font-bold text-gray-900 mt-4">1. Information We Collect</h3>
+        <p>We collect information you provide directly, such as when you create an account, submit a report, or join a drive. For sensitive reports (Bribes/Scams), we automatically mask your identity in public feeds.</p>
+        <h3 className="text-lg font-bold text-gray-900 mt-4">2. Data Security</h3>
+        <p>We use industry-standard encryption to protect your personal details. Your phone number and email are never shared publicly.</p>
+        <h3 className="text-lg font-bold text-gray-900 mt-4">3. Your Rights</h3>
+        <p>You have the right to access, correct, or delete your personal information at any time via your profile settings.</p>
+      </div>
+      <div className="mt-8 pt-6 border-t border-gray-100 flex justify-end">
+        <Button variant="primary" onClick={onClose}>Close</Button>
       </div>
     </div>
   </div>
@@ -2456,7 +3171,7 @@ const PostTimeline = ({ timeline, canUpdate, onAddUpdate }) => {
           Issue Journey
         </h3>
         {canUpdate && (
-          <Button variant="outline" className="!py-1 !px-2 text-xs" onClick={() => setShowInput(!showInput)}>
+          <Button variant="outline" className="py-1! px-2! text-xs" onClick={() => setShowInput(!showInput)}>
             + Add Update
           </Button>
         )}
@@ -2472,8 +3187,8 @@ const PostTimeline = ({ timeline, canUpdate, onAddUpdate }) => {
             onChange={(e) => setNewUpdate(e.target.value)}
           />
           <div className="flex justify-end gap-2 mt-2">
-             <Button variant="ghost" className="!py-1 !px-2 text-xs" onClick={() => setShowInput(false)}>Cancel</Button>
-             <Button variant="primary" className="!py-1 !px-2 text-xs" onClick={() => {
+             <Button variant="ghost" className="py-1! px-2! text-xs" onClick={() => setShowInput(false)}>Cancel</Button>
+             <Button variant="primary" className="py-1! px-2! text-xs" onClick={() => {
                 onAddUpdate(newUpdate);
                 setNewUpdate('');
                 setShowInput(false);
@@ -2485,7 +3200,7 @@ const PostTimeline = ({ timeline, canUpdate, onAddUpdate }) => {
       <div className="relative pl-4 border-l-2 border-blue-100 space-y-8">
         {timeline.map((item, idx) => (
           <div key={idx} className="relative group">
-            <div className={`absolute -left-[21px] top-1 w-3 h-3 rounded-full ring-4 ring-white transition-all
+            <div className={`absolute -left-5.25 top-1 w-3 h-3 rounded-full ring-4 ring-white transition-all
               ${idx === timeline.length - 1 ? 'bg-blue-600 scale-125' : 'bg-blue-300'}`}></div>
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
@@ -2509,13 +3224,16 @@ const PostTimeline = ({ timeline, canUpdate, onAddUpdate }) => {
 };
 
 // Post Card
-const PostCard = ({ post, onClick, onVolunteer, onShare, onVouch, onFlag, currentUser }) => {
+const PostCard = ({ post, onClick, onVolunteer, onShare, onFlag, onLike, onEdit, currentUser, isDetailView = false }) => {
   const category = CATEGORIES.find(c => c.id === post.type) || CATEGORIES[0];
   const isResolved = post.status === 'Resolved';
+  const isAuthor = currentUser && currentUser.id === post.authorId;
+  const isVolunteering = currentUser && post.volunteers?.includes(currentUser.id);
+  const isSensitive = post.type === 'bribe' || post.type === 'scam';
   
   return (
-    <div className={`bg-white rounded-[24px] shadow-sm hover:shadow-xl transition-all duration-300 group relative border border-gray-100 h-full flex flex-col overflow-hidden
-      ${post.flags > 0 ? 'ring-2 ring-red-100' : ''}`}>
+    <div className={`bg-white rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 group relative border border-gray-100 flex flex-col overflow-hidden
+      ${post.flags > 0 ? 'ring-2 ring-red-100' : ''} ${!isDetailView ? 'h-full' : ''}`}>
       
       {/* High Risk Overlay for flagged content */}
       {post.flags > 2 && (
@@ -2542,7 +3260,7 @@ const PostCard = ({ post, onClick, onVolunteer, onShare, onVouch, onFlag, curren
         </div>
 
         {/* Title */}
-        <h3 className="text-lg font-bold text-[#1d1d1f] mb-2 leading-tight cursor-pointer hover:text-[#0071e3] transition-colors line-clamp-2" onClick={() => onClick(post)}>
+        <h3 className={`font-bold text-[#1d1d1f] mb-2 leading-tight cursor-pointer hover:text-[#0071e3] transition-colors ${isDetailView ? 'text-2xl' : 'text-lg line-clamp-2'}`} onClick={() => onClick(post)}>
           {post.title}
         </h3>
 
@@ -2553,8 +3271,30 @@ const PostCard = ({ post, onClick, onVolunteer, onShare, onVouch, onFlag, curren
            <span>{post.date}</span>
         </div>
 
+        {/* Description */}
+        <p className={`text-sm text-gray-600 mb-4 ${!isDetailView ? 'line-clamp-3 flex-1' : ''}`}>
+          {post.description}
+        </p>
+
+        {/* User Uploaded Media */}
+        {(post.image || post.video || post.videoLink) && (
+           <div className="mb-4 space-y-3">
+              {post.image && (
+                 <img src={post.image} alt="Report Evidence" className="w-full h-48 object-cover rounded-xl border border-gray-100" />
+              )}
+              {post.video && (
+                 <video src={post.video} controls className="w-full max-h-64 rounded-xl border border-gray-100 bg-black" />
+              )}
+              {post.videoLink && (
+                 <a href={post.videoLink} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl text-blue-600 hover:bg-blue-50 transition-colors text-sm font-medium">
+                    <ExternalLink size={16} /> Watch Video Evidence
+                 </a>
+              )}
+           </div>
+        )}
+
         {/* Evidence Gallery (Restored) */}
-        {isResolved && post.evidence ? (
+        {isResolved && post.evidence && (
            <div className="mb-4 rounded-xl overflow-hidden h-32 relative group/img cursor-pointer" onClick={() => onClick(post)}>
               <div className="absolute inset-0 flex">
                  <img src={post.evidence.before} className="w-1/2 h-full object-cover" alt="Before" />
@@ -2563,31 +3303,58 @@ const PostCard = ({ post, onClick, onVolunteer, onShare, onVouch, onFlag, curren
               <div className="absolute inset-0 bg-black/10 group-hover/img:bg-transparent transition-colors"></div>
               <div className="absolute bottom-2 left-2 bg-black/60 text-white text-[10px] font-bold px-2 py-0.5 rounded backdrop-blur-md">Fixed</div>
            </div>
-        ) : post.isVolunteerDrive && post.eventDate ? (
-           <div className="mb-4 bg-[#f5f5f7] rounded-xl p-3 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                 <div className="bg-white p-2 rounded-lg text-blue-600 shadow-sm">
-                    <Calendar size={16} />
+        )}
+
+        {/* Volunteer Drive Section */}
+        {post.isVolunteerDrive && post.eventDate && (
+           <div className="mb-4 bg-blue-50/80 border border-blue-100 rounded-xl p-3">
+              <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2 text-blue-900">
+                      <div className="bg-white p-1.5 rounded-md shadow-sm text-blue-600">
+                        <Calendar size={14} />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold">{post.eventDate}</div>
+                        <div className="text-[10px] text-blue-700/80 font-medium">{post.eventTime}</div>
+                      </div>
                  </div>
-                 <div>
-                    <div className="text-xs font-bold text-gray-900">{post.eventDate}</div>
-                    <div className="text-[10px] text-gray-500">{post.eventTime}</div>
-                 </div>
+                  {isResolved && <span className="text-[10px] font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full border border-green-200">Completed</span>}
               </div>
-              <Button variant="primary" className="!py-1.5 !px-3 !text-xs !h-auto" onClick={(e) => { e.stopPropagation(); onVolunteer(post.id); }}>Join</Button>
+              
+              <div className="flex gap-2">
+                <Button 
+                    variant={isResolved ? "secondary" : isAuthor ? "outline" : isVolunteering ? "secondary" : "primary"} 
+                    className={`flex-1 py-2! px-3! text-xs! h-auto! justify-center ${isVolunteering && !isResolved ? 'bg-green-600 text-white hover:bg-green-700' : ''}`}
+                    onClick={(e) => { e.stopPropagation(); if(!isAuthor && !isResolved) onVolunteer(post.id); }}
+                    disabled={isAuthor || isResolved}
+                >
+                    {isResolved ? 'Event Ended' : isAuthor ? 'Organizer' : isVolunteering ? 'Joined' : 'Join Drive'}
+                </Button>
+                {isAuthor && (
+                    <Button 
+                    variant="secondary" 
+                    className="py-2! px-3! text-xs! h-auto! bg-white border border-gray-200 shadow-sm hover:bg-gray-50" 
+                    onClick={(e) => { e.stopPropagation(); onEdit && onEdit(post); }}
+                    icon={Edit}
+                    >
+                    Edit
+                    </Button>
+                )}
+              </div>
            </div>
-        ) : (
-           <p className="text-sm text-gray-600 line-clamp-3 mb-4 flex-1">{post.description}</p>
         )}
 
         {/* Footer */}
         <div className="mt-auto pt-4 border-t border-gray-100 flex items-center justify-between">
            <div className="flex items-center gap-4">
-              <button className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-[#1d1d1f] transition-colors">
+              <button 
+                className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-blue-600 transition-colors"
+                onClick={(e) => { e.stopPropagation(); onLike && onLike(post.id); }}
+              >
                  <ThumbsUp size={14} /> {post.upvotes}
               </button>
               <button className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-[#1d1d1f] transition-colors" onClick={() => onClick(post)}>
-                 <MessageCircle size={14} /> {post.comments.length}
+                 <MessageCircle size={14} /> {(post.comments || []).length}
               </button>
            </div>
            <div className="flex items-center gap-2">
@@ -2605,14 +3372,37 @@ const PostCard = ({ post, onClick, onVolunteer, onShare, onVouch, onFlag, curren
 };
 
 // Create Post
-const CreatePost = ({ onBack, onSubmit }) => {
-  const [formData, setFormData] = useState({
-    type: 'cleanliness', title: '', description: '', city: '', state: '', location: '',
-    agreePolicy: false, agreeTruth: false
-  });
-  const [error, setError] = useState(null);
+const CreatePost = ({ onBack, onSubmit, initialData }) => {
+  const buildFormState = (seed = null) => {
+    const base = {
+      type: 'cleanliness', title: '', description: '', city: '', state: '', location: '',
+      agreePolicy: false, agreeTruth: false,
+      eventDate: '', eventTime: '',
+      imageFile: null, imagePreview: null,
+      videoFile: null, videoPreview: null,
+      videoLink: ''
+    };
+    if (!seed) return base;
+    const { image, video, ...rest } = seed;
+    return {
+      ...base,
+      ...rest,
+      imageFile: null,
+      imagePreview: image || null,
+      videoFile: null,
+      videoPreview: video || null,
+      agreePolicy: true,
+      agreeTruth: true
+    };
+  };
 
-  const handleSubmit = (e) => {
+  const [formData, setFormData] = useState(() => buildFormState(initialData || null));
+  const [error, setError] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showFullImage, setShowFullImage] = useState(false);
+  const MAX_DESC_LENGTH = 1000;
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.agreePolicy || !formData.agreeTruth) return;
 
@@ -2625,13 +3415,16 @@ const CreatePost = ({ onBack, onSubmit }) => {
       setError("Please provide more details about the incident.");
       return;
     }
+    setError(null);
+    setIsLoading(true);
 
     // Submit sanitized data
-    onSubmit({
+    await onSubmit({
       ...formData,
       title: maskedTitle,
       description: maskedDesc
     });
+    setIsLoading(false);
   };
 
   return (
@@ -2641,7 +3434,7 @@ const CreatePost = ({ onBack, onSubmit }) => {
       </button>
 
       <div className="bg-white rounded-[30px] shadow-xl shadow-gray-200/50 p-8 md:p-10">
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">File a Report <FeatureInfo title="Reporting Guidelines" content="Choose the correct category. Provide clear details. Your report will be public but your personal details (phone/email) are kept private." /></h2>
+        <h2 className="text-2xl font-bold text-gray-900 mb-6">{initialData ? 'Edit Report' : 'File a Report'} <FeatureInfo title="Reporting Guidelines" content="Choose the correct category. Provide clear details. Your report will be public but your personal details (phone/email) are kept private." /></h2>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-3">
@@ -2664,6 +3457,30 @@ const CreatePost = ({ onBack, onSubmit }) => {
               ))}
             </div>
           </div>
+
+          {formData.type === 'volunteer' && (
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-4">
+              <div className="flex gap-3 text-sm text-blue-900">
+                <Users className="shrink-0 mt-0.5 text-blue-600" size={18} />
+                <div>
+                  <p className="font-bold mb-1">Organize a Drive</p>
+                  <p className="opacity-90">Set a date and time for the community to gather.</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Event Date</label>
+                  <input type="date" required className="w-full px-4 py-2 rounded-lg bg-white border border-blue-200 text-[#1d1d1f] focus:ring-2 focus:ring-[#0071e3]/20 outline-none"
+                    value={formData.eventDate} onChange={e => setFormData({...formData, eventDate: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Event Time</label>
+                  <input type="time" required className="w-full px-4 py-2 rounded-lg bg-white border border-blue-200 text-[#1d1d1f] focus:ring-2 focus:ring-[#0071e3]/20 outline-none"
+                    value={formData.eventTime} onChange={e => setFormData({...formData, eventTime: e.target.value})} />
+                </div>
+              </div>
+            </div>
+          )}
 
           {(formData.type === 'bribe' || formData.type === 'scam') && (
             <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex gap-3 text-sm text-amber-900">
@@ -2707,11 +3524,111 @@ const CreatePost = ({ onBack, onSubmit }) => {
               <label className="block text-sm font-medium text-gray-700 mb-1">Details</label>
               <textarea required rows={4} className="w-full px-4 py-3 rounded-xl bg-[#f5f5f7] border-none text-[#1d1d1f] focus:ring-2 focus:ring-[#0071e3]/20 outline-none resize-none placeholder:text-gray-400"
                 placeholder="Describe clearly. Upload evidence below if available."
-                value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})}
+                value={formData.description} onChange={e => setFormData({...formData, description: e.target.value.slice(0, MAX_DESC_LENGTH)})}
               />
-              <p className="text-xs text-gray-400 mt-1">Note: 10-digit mobile numbers will be masked (e.g., 98XXXXX123) to prevent doxxing.</p>
+              <div className="flex justify-between items-start mt-1">
+                <p className="text-xs text-gray-400">Note: 10-digit mobile numbers will be masked (e.g., 98XXXXX123) to prevent doxxing.</p>
+                <span className="text-xs text-gray-400 font-medium">
+                  {formData.description.length}/{MAX_DESC_LENGTH}
+                </span>
+              </div>
             </div>
             
+            {/* Media Upload Section */}
+            <div className="space-y-3">
+               <label className="block text-sm font-medium text-gray-700">Evidence (Optional)</label>
+               
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Image Upload */}
+                  <div className="border-2 border-dashed border-gray-200 rounded-xl p-4 text-center hover:bg-gray-50 transition-colors relative">
+                     <input 
+                       type="file" 
+                       accept="image/*" 
+                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                       onChange={(e) => {
+                         const file = e.target.files[0];
+                         if(file) {
+                           const reader = new FileReader();
+                           reader.onloadend = () => setFormData({...formData, imageFile: file, imagePreview: reader.result});
+                           reader.readAsDataURL(file);
+                         }
+                       }}
+                     />
+                     {formData.imagePreview ? (
+                        <div className="relative h-32 w-full group">
+                           <img 
+                             src={formData.imagePreview} 
+                             alt="Preview" 
+                             className="w-full h-full object-cover rounded-lg cursor-zoom-in hover:opacity-90 transition-opacity" 
+                             onClick={() => setShowFullImage(true)}
+                           />
+                           <button 
+                             type="button"
+                             onClick={(e) => { e.preventDefault(); setFormData({...formData, imageFile: null, imagePreview: null}); }}
+                             className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full shadow-sm z-10"
+                           >
+                             <X size={12} />
+                           </button>
+                        </div>
+                     ) : (
+                        <div className="flex flex-col items-center justify-center h-32 text-gray-400">
+                           <Camera size={24} className="mb-2" />
+                           <span className="text-xs">Upload Image</span>
+                        </div>
+                     )}
+                  </div>
+
+                  {/* Video Upload */}
+                  <div className="border-2 border-dashed border-gray-200 rounded-xl p-4 text-center hover:bg-gray-50 transition-colors relative">
+                     <input 
+                       type="file" 
+                       accept="video/*" 
+                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                       onChange={(e) => {
+                         const file = e.target.files[0];
+                         if(file) {
+                           if (file.size > 5 * 1024 * 1024) {
+                             alert("Video too large for prototype (Max 5MB). Please use a link instead.");
+                             return;
+                           }
+                           const reader = new FileReader();
+                           reader.onloadend = () => setFormData({...formData, videoFile: file, videoPreview: reader.result});
+                           reader.readAsDataURL(file);
+                         }
+                       }}
+                     />
+                     {formData.videoPreview ? (
+                        <div className="relative h-32 w-full flex items-center justify-center bg-black rounded-lg">
+                           <video src={formData.videoPreview} className="w-full h-full object-contain rounded-lg" />
+                           <button 
+                             type="button"
+                             onClick={(e) => { e.preventDefault(); setFormData({...formData, videoFile: null, videoPreview: null}); }}
+                             className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full shadow-sm z-10"
+                           >
+                             <X size={12} />
+                           </button>
+                        </div>
+                     ) : (
+                        <div className="flex flex-col items-center justify-center h-32 text-gray-400">
+                           <Video size={24} className="mb-2" />
+                           <span className="text-xs">Upload Video</span>
+                        </div>
+                     )}
+                  </div>
+               </div>
+
+               {/* Video Link */}
+               <div>
+                  <input 
+                    type="url" 
+                    className="w-full px-4 py-3 rounded-xl bg-[#f5f5f7] border-none text-[#1d1d1f] focus:ring-2 focus:ring-[#0071e3]/20 outline-none transition-all placeholder:text-gray-400"
+                    placeholder="Or paste a video link (YouTube, etc.)"
+                    value={formData.videoLink} 
+                    onChange={e => setFormData({...formData, videoLink: e.target.value})}
+                  />
+               </div>
+            </div>
+
             {error && <p className="text-sm text-red-600 font-medium">{error}</p>}
           </div>
 
@@ -2726,51 +3643,89 @@ const CreatePost = ({ onBack, onSubmit }) => {
             </label>
           </div>
 
-          <Button variant="primary" className="w-full py-3 text-lg shadow-blue-300/50 shadow-lg" disabled={!formData.agreePolicy || !formData.agreeTruth}>
-            Submit Report
+          <Button variant="primary" className="w-full py-3 text-lg shadow-blue-300/50 shadow-lg" loading={isLoading} disabled={!formData.agreePolicy || !formData.agreeTruth}>
+            {initialData ? 'Update Report' : formData.type === 'volunteer' ? 'Create Drive' : 'Submit Report'}
           </Button>
         </form>
+
+        {/* Full Screen Image Preview Modal */}
+        {showFullImage && formData.imagePreview && (
+          <div className="fixed inset-0 bg-black/90 z-250 flex items-center justify-center p-4 animate-in fade-in" onClick={() => setShowFullImage(false)}>
+            <button className="absolute top-4 right-4 text-white p-2 hover:bg-white/10 rounded-full transition-colors">
+              <X size={32} />
+            </button>
+            <img src={formData.imagePreview} alt="Full Preview" className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl" onClick={(e) => e.stopPropagation()} />
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
 // Login Screen Component
-const LoginScreen = ({ onLogin, onBack, onSignUpClick }) => {
+const LoginScreen = ({ onAuthSuccess, onBack, onSignUpClick }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
-    // Simulate network request
-    setTimeout(() => {
-      onLogin({ 
-        name: 'Citizen User', 
-        id: 'user_123', 
-        email: email, 
-        role: 'user',
-        joinedDate: 'Oct 2023',
-        phone: '9876543210',
-        aadhar: 'XXXX-XXXX-1234',
-        address: 'Sector 4, Main Street',
-        city: 'Mumbai',
-        occupation: 'Concerned Citizen',
-        age: '25'
-      });
-    }, 1000);
+    setError(null);
+    try {
+      await onAuthSuccess({ email, password });
+    } catch (err) {
+      setError(err?.message || 'Login failed.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleProviderSignIn = async (provider) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      await signInWithProvider(provider);
+    } catch (err) {
+      let msg = err?.message || `${provider} login failed.`;
+      if (msg.includes('provider is not enabled')) {
+        msg = `${provider} is disabled in Supabase. Enable it in Authentication > Providers.`;
+      }
+      setError(msg);
+      setIsLoading(false);
+    }
   };
 
   return (
     <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center px-4 bg-gray-50">
       <div className="w-full max-w-md bg-white rounded-[30px] shadow-xl p-10 animate-in fade-in zoom-in-95 duration-300">
         <div className="text-center mb-8">
-          <div className="w-14 h-14 bg-gradient-to-tr from-blue-600 to-teal-400 rounded-2xl mx-auto flex items-center justify-center text-white mb-4 shadow-lg shadow-blue-200">
+          <div className="w-14 h-14 bg-linear-to-tr from-blue-600 to-teal-400 rounded-2xl mx-auto flex items-center justify-center text-white mb-4 shadow-lg shadow-blue-200">
             <Shield size={32} />
           </div>
           <h2 className="text-2xl font-bold text-gray-900">Welcome Back</h2>
           <p className="text-gray-500 text-sm mt-1">Sign in to continue your civic journey</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <Button variant="outline" className="justify-center border-gray-200 hover:bg-gray-50 text-gray-700" onClick={() => handleProviderSignIn('google')}>
+            <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5" />
+            Google
+          </Button>
+          <Button variant="outline" className="justify-center border-gray-200 hover:bg-gray-50 text-gray-700" onClick={() => handleProviderSignIn('apple')}>
+            <img src="https://www.svgrepo.com/show/448234/apple.svg" alt="Apple" className="w-5 h-5" />
+            Apple
+          </Button>
+        </div>
+
+        <div className="relative mb-6">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-200"></div>
+          </div>
+          <div className="relative flex justify-center text-sm">
+            <span className="px-2 bg-white text-gray-500">Or continue with email</span>
+          </div>
         </div>
         
         <form onSubmit={handleSubmit} className="space-y-5">
@@ -2811,8 +3766,10 @@ const LoginScreen = ({ onLogin, onBack, onSignUpClick }) => {
             <button type="button" className="text-blue-600 hover:text-blue-700 font-medium">Forgot password?</button>
           </div>
 
-          <Button variant="primary" className="w-full py-3 text-base shadow-lg shadow-blue-200" disabled={isLoading}>
-            {isLoading ? 'Signing in...' : 'Login'}
+          {error && <p className="text-sm text-red-600 text-center">{error}</p>}
+
+          <Button variant="primary" className="w-full py-3 text-base shadow-lg shadow-blue-200" loading={isLoading}>
+            Login
           </Button>
         </form>
         
@@ -2827,36 +3784,44 @@ const LoginScreen = ({ onLogin, onBack, onSignUpClick }) => {
 };
 
 // SignUp Screen Component
-const SignUpScreen = ({ onSignUp, onBack }) => {
+const SignUpScreen = ({ onAuthSuccess, onBack }) => {
   const [formData, setFormData] = useState({ 
     name: '', email: '', password: '', confirmPassword: '',
-    phone: '', aadhar: '', address: '', city: '', occupation: '', age: ''
+    phone: '', city: '', occupation: '', age: ''
   });
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (formData.password !== formData.confirmPassword) {
       setError("Passwords do not match");
       return;
     }
     setIsLoading(true);
-    setTimeout(() => {
-      onSignUp({
-        name: formData.name,
-        email: formData.email,
-        id: `user_${Date.now()}`,
-        role: 'user',
-        joinedDate: new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
-        phone: formData.phone,
-        aadhar: formData.aadhar,
-        address: formData.address,
-        city: formData.city,
-        occupation: formData.occupation,
-        age: formData.age
-      });
-    }, 1000);
+    setError('');
+    try {
+      await onAuthSuccess(formData);
+    } catch (err) {
+      setError(err?.message || 'Signup failed.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleProviderSignUp = async (provider) => {
+    setIsLoading(true);
+    setError('');
+    try {
+      await signInWithProvider(provider);
+    } catch (err) {
+      let msg = err?.message || `${provider} signup failed.`;
+      if (msg.includes('provider is not enabled')) {
+        msg = `${provider} is disabled in Supabase. Enable it in Authentication > Providers.`;
+      }
+      setError(msg);
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -2865,6 +3830,26 @@ const SignUpScreen = ({ onSignUp, onBack }) => {
         <div className="text-center mb-8">
           <h2 className="text-2xl font-bold text-gray-900">Join the Movement</h2>
           <p className="text-gray-500 text-sm mt-1">Create an account to start reporting</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <Button variant="outline" className="justify-center border-gray-200 hover:bg-gray-50 text-gray-700" onClick={() => handleProviderSignUp('google')}>
+            <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5" />
+            Google
+          </Button>
+          <Button variant="outline" className="justify-center border-gray-200 hover:bg-gray-50 text-gray-700" onClick={() => handleProviderSignUp('apple')}>
+            <img src="https://www.svgrepo.com/show/448234/apple.svg" alt="Apple" className="w-5 h-5" />
+            Apple
+          </Button>
+        </div>
+
+        <div className="relative mb-6">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-200"></div>
+          </div>
+          <div className="relative flex justify-center text-sm">
+            <span className="px-2 bg-white text-gray-500">Or sign up with email</span>
+          </div>
         </div>
         
         <form onSubmit={handleSubmit} className="space-y-3">
@@ -2906,18 +3891,6 @@ const SignUpScreen = ({ onSignUp, onBack }) => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Aadhar Number</label>
-            <input type="text" required className="w-full px-4 py-3 rounded-xl bg-[#f5f5f7] border-none text-[#1d1d1f] focus:ring-2 focus:ring-[#0071e3]/20 outline-none"
-              value={formData.aadhar} onChange={e => setFormData({...formData, aadhar: e.target.value})} placeholder="XXXX-XXXX-XXXX" />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
-            <input type="text" required className="w-full px-4 py-3 rounded-xl bg-[#f5f5f7] border-none text-[#1d1d1f] focus:ring-2 focus:ring-[#0071e3]/20 outline-none"
-              value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
-          </div>
-
-          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
             <input type="password" required className="w-full px-4 py-3 rounded-xl bg-[#f5f5f7] border-none text-[#1d1d1f] focus:ring-2 focus:ring-[#0071e3]/20 outline-none"
               value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
@@ -2929,9 +3902,8 @@ const SignUpScreen = ({ onSignUp, onBack }) => {
           </div>
           
           {error && <p className="text-sm text-red-600">{error}</p>}
-
-          <Button variant="primary" className="w-full py-3 mt-2" disabled={isLoading}>
-            {isLoading ? 'Creating Account...' : 'Sign Up'}
+          <Button variant="primary" className="w-full py-3 mt-2" loading={isLoading}>
+            Sign Up
           </Button>
         </form>
         
@@ -2949,8 +3921,6 @@ const EditProfile = ({ user, onSave, onCancel }) => {
     name: user.name, 
     email: user.email,
     phone: user.phone || '',
-    aadhar: user.aadhar || '',
-    address: user.address || '',
     city: user.city || '',
     occupation: user.occupation || '',
     age: user.age || ''
@@ -3001,18 +3971,6 @@ const EditProfile = ({ user, onSave, onCancel }) => {
               <input type="text" className="w-full px-4 py-3 rounded-xl bg-[#f5f5f7] border-none text-[#1d1d1f] focus:ring-2 focus:ring-[#0071e3]/20 outline-none"
                 value={formData.occupation} onChange={e => setFormData({...formData, occupation: e.target.value})} />
             </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Aadhar Number</label>
-            <input type="text" className="w-full px-4 py-3 rounded-xl bg-[#f5f5f7] border-none text-[#1d1d1f] focus:ring-2 focus:ring-[#0071e3]/20 outline-none"
-              value={formData.aadhar} onChange={e => setFormData({...formData, aadhar: e.target.value})} />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
-            <input type="text" className="w-full px-4 py-3 rounded-xl bg-[#f5f5f7] border-none text-[#1d1d1f] focus:ring-2 focus:ring-[#0071e3]/20 outline-none"
-              value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
           </div>
 
           <div className="flex gap-3 pt-4">
@@ -3188,12 +4146,64 @@ const AlertSettings = ({ user, onUpdateUser, onSimulateAlert }) => {
   );
 };
 
+const PointsHistoryModal = ({ onClose, points }) => (
+  <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-200 flex items-center justify-center p-4 animate-in fade-in">
+    <div className="bg-white rounded-[30px] w-full max-w-md shadow-2xl overflow-hidden">
+      <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+        <div>
+            <h3 className="font-bold text-lg text-gray-900">Points History</h3>
+            <p className="text-xs text-gray-500">Total Earned: {points}</p>
+        </div>
+        <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-full transition-colors"><X size={20} /></button>
+      </div>
+      <div className="p-0 max-h-[60vh] overflow-y-auto">
+        {[
+            { action: 'Report Resolved', points: '+50', date: '2 days ago', icon: CheckCircle, color: 'text-green-600 bg-green-50' },
+            { action: 'Joined Volunteer Drive', points: '+30', date: '5 days ago', icon: Users, color: 'text-blue-600 bg-blue-50' },
+            { action: 'Report Verified', points: '+25', date: '1 week ago', icon: Shield, color: 'text-purple-600 bg-purple-50' },
+            { action: 'Filed Report', points: '+10', date: '2 weeks ago', icon: FileText, color: 'text-orange-600 bg-orange-50' },
+            { action: 'Vouched for Issue', points: '+2', date: '2 weeks ago', icon: ThumbsUp, color: 'text-gray-600 bg-gray-50' },
+        ].map((item, i) => (
+            <div key={i} className="flex items-center justify-between p-4 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
+                <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-full ${item.color}`}>
+                        <item.icon size={16} />
+                    </div>
+                    <div>
+                        <p className="text-sm font-bold text-gray-900">{item.action}</p>
+                        <p className="text-xs text-gray-500">{item.date}</p>
+                    </div>
+                </div>
+                <span className="font-mono font-bold text-green-600">{item.points}</span>
+            </div>
+        ))}
+      </div>
+    </div>
+  </div>
+);
+
 // User Dashboard Component
 const UserDashboard = ({ user, posts, onViewChange, onLogout, onUpdateUser, onSimulateAlert }) => {
   const [activeTab, setActiveTab] = useState('activity');
+  const [showPointsHistory, setShowPointsHistory] = useState(false);
   const myPosts = posts.filter(p => p.authorId === user.id);
   const resolvedCount = myPosts.filter(p => p.status === 'Resolved').length;
   const totalUpvotes = myPosts.reduce((acc, curr) => acc + (curr.upvotes || 0), 0);
+
+  const myActivity = useMemo(() => {
+    return posts.filter(p => 
+      (p.upvotedBy?.includes(user.id)) || 
+      (p.vouchedBy?.includes(user.id)) || 
+      (p.comments?.some(c => c.author_id === user.id))
+    );
+  }, [posts, user.id]);
+
+  // Dynamic Level & Badges Logic
+  const userLevel = resolvedCount >= 10 ? 'Level 3 Citizen' : resolvedCount >= 3 ? 'Level 2 Citizen' : 'Level 1 Citizen';
+  const userBadges = [];
+  if (resolvedCount >= 5) userBadges.push({ label: 'Verified Reporter', className: 'bg-yellow-100 text-yellow-800' });
+  if (totalUpvotes >= 50) userBadges.push({ label: 'Community Voice', className: 'bg-blue-100 text-blue-700' });
+  if (userBadges.length === 0) userBadges.push({ label: 'New Member', className: 'bg-gray-100 text-gray-600' });
 
   const messages = [
     { id: 1, sender: 'Ravi K.', senderId: 'user_123', text: 'Hey, thanks for the update on the Dadar issue! Great work.', time: '2 hours ago', unread: true },
@@ -3201,22 +4211,42 @@ const UserDashboard = ({ user, posts, onViewChange, onLogout, onUpdateUser, onSi
     { id: 3, sender: 'Priya S.', senderId: 'user_456', text: 'Can you share the exact location pin for the cleanup drive next week?', time: '2 days ago', unread: false },
   ];
 
+  // Points Level Logic
+  const POINTS_LEVELS = [
+    { level: 1, max: 100, label: 'Citizen' },
+    { level: 2, max: 500, label: 'Active Contributor' },
+    { level: 3, max: 1000, label: 'Community Guardian' },
+    { level: 4, max: 2500, label: 'Civic Leader' },
+    { level: 5, max: 5000, label: 'Change Maker' }
+  ];
+
+  const currentPoints = user.points || 0;
+  const nextLevelIndex = POINTS_LEVELS.findIndex(l => l.max > currentPoints);
+  const isMaxLevel = nextLevelIndex === -1;
+  
+  const currentLevelData = isMaxLevel ? POINTS_LEVELS[POINTS_LEVELS.length - 1] : (nextLevelIndex > 0 ? POINTS_LEVELS[nextLevelIndex - 1] : { max: 0, label: 'Newcomer' });
+  const nextLevelData = isMaxLevel ? null : POINTS_LEVELS[nextLevelIndex];
+  
+  const pointsNeeded = nextLevelData ? nextLevelData.max - currentPoints : 0;
+  const progressPercent = isMaxLevel ? 100 : Math.min(100, Math.max(0, ((currentPoints - currentLevelData.max) / (nextLevelData.max - currentLevelData.max)) * 100));
+
   // Permissions Logic
   const permissions = [
     { label: 'Submit Reports', active: true, icon: FileText },
     { label: 'Comment & Discuss', active: true, icon: MessageCircle },
-    { label: 'Verify Issues', active: false, icon: CheckCircle, req: 'Req: Level 5' },
-    { label: 'Moderation Access', active: false, icon: Shield, req: 'Req: Admin' },
+    { label: 'Verify Issues', active: user.role === 'admin' || userLevel === 'Level 3 Citizen', icon: CheckCircle, req: 'Req: Level 3+' },
+    { label: 'Moderation Access', active: user.role === 'admin', icon: Shield, req: 'Req: Admin' },
   ];
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
       {/* Header Profile Card */}
-      <div className="bg-white rounded-[30px] p-8 md:p-10 shadow-sm mb-8 relative overflow-hidden">
+      <div className="p-0.75 rounded-4xl bg-linear-to-r from-orange-500 via-white to-green-500 mb-8 shadow-2xl">
+      <div className="bg-white rounded-[30px] p-8 md:p-10 relative overflow-hidden h-full">
         <div className="absolute top-0 right-0 p-32 bg-blue-50 rounded-full blur-3xl -mr-16 -mt-16 opacity-50"></div>
         
         <div className="relative z-10 flex flex-col md:flex-row items-center gap-8">
-          <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white text-3xl font-bold shadow-lg ring-4 ring-white">
+          <div className="w-24 h-24 bg-linear-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white text-3xl font-bold shadow-lg ring-4 ring-white">
             {user.name.charAt(0)}
           </div>
           
@@ -3233,24 +4263,47 @@ const UserDashboard = ({ user, posts, onViewChange, onLogout, onUpdateUser, onSi
               <span>Member since {user.joinedDate || 'Oct 2023'}</span>
             </div>
             <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 mt-3">
-              <Badge className="bg-blue-100 text-blue-700 px-3 py-1">Level 3 Citizen</Badge>
-              <Badge className="bg-yellow-100 text-yellow-800 px-3 py-1">Verified Reporter</Badge>
+              <Badge className="bg-blue-100 text-blue-700 px-3 py-1">{userLevel}</Badge>
+              {userBadges.map((badge, i) => (
+                <Badge key={i} className={`${badge.className} px-3 py-1`}>{badge.label}</Badge>
+              ))}
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 min-w-[140px]">
+          <div className="flex flex-col gap-3 min-w-35">
+            {user.role === 'admin' && (
+              <Button variant="primary" onClick={() => onViewChange('admin')} icon={LayoutDashboard}>Admin Panel</Button>
+            )}
             <Button variant="outline" onClick={() => onViewChange('create')} icon={Plus}>New Report</Button>
             <Button variant="secondary" onClick={onLogout} icon={LogOut} className="text-red-600 hover:bg-red-50 border-red-100">Logout</Button>
           </div>
         </div>
+      </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left Column: Stats & Permissions */}
         <div className="space-y-6">
           {/* Impact Stats */}
-          <div className="bg-white rounded-[24px] shadow-sm p-6">
+          <div className="bg-white rounded-3xl shadow-sm p-6">
             <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><Activity size={18} className="text-blue-600"/> Your Impact <FeatureInfo title="Impact Stats" content="Track your contributions. 'Reports' are issues you filed. 'Resolved' are those fixed. 'Upvotes' show community support." /></h3>
+            
+            {/* Progress Bar */}
+            <div className="mb-6 bg-gray-50 p-4 rounded-xl border border-gray-100">
+                <div className="flex justify-between items-end mb-2">
+                    <div>
+                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Current Level</span>
+                        <div className="font-bold text-indigo-600">{currentLevelData.label}</div>
+                    </div>
+                    <div className="text-right">
+                        <span className="text-xs font-bold text-gray-400">{isMaxLevel ? 'Max Level Reached!' : `${pointsNeeded} pts to ${nextLevelData.label}`}</span>
+                    </div>
+                </div>
+                <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-linear-to-r from-blue-500 to-purple-600 transition-all duration-1000" style={{ width: `${progressPercent}%` }}></div>
+                </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-gray-50 p-3 rounded-lg text-center">
                 <div className="text-2xl font-bold text-gray-900">{myPosts.length}</div>
@@ -3264,15 +4317,15 @@ const UserDashboard = ({ user, posts, onViewChange, onLogout, onUpdateUser, onSi
                 <div className="text-2xl font-bold text-blue-600">{totalUpvotes}</div>
                 <div className="text-xs text-blue-700 font-medium">Upvotes</div>
               </div>
-              <div className="bg-purple-50 p-3 rounded-lg text-center">
-                <div className="text-2xl font-bold text-purple-600">Top 10%</div>
-                <div className="text-xs text-purple-700 font-medium">Rank</div>
+              <div className="bg-purple-50 p-3 rounded-lg text-center cursor-pointer hover:bg-purple-100 transition-colors" onClick={() => setShowPointsHistory(true)}>
+                <div className="text-2xl font-bold text-purple-600">{user.points || 0}</div>
+                <div className="text-xs text-purple-700 font-medium flex items-center justify-center gap-1">Civic Points <ChevronRight size={10} /></div>
               </div>
             </div>
           </div>
 
           {/* Permissions / Capabilities */}
-          <div className="bg-white rounded-[24px] shadow-sm p-6">
+          <div className="bg-white rounded-3xl shadow-sm p-6">
             <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><Shield size={18} className="text-gray-600"/> Account Permissions <FeatureInfo title="Permissions" content="As you contribute more, you unlock new abilities like verifying other reports or moderating content." /></h3>
             <div className="space-y-3">
               {permissions.map((perm, idx) => (
@@ -3296,13 +4349,19 @@ const UserDashboard = ({ user, posts, onViewChange, onLogout, onUpdateUser, onSi
 
         {/* Right Column: Activity Feed */}
         <div className="lg:col-span-2">
-          <div className="bg-white rounded-[30px] shadow-sm overflow-hidden min-h-[500px] p-6">
+          <div className="bg-white rounded-[30px] shadow-sm overflow-hidden min-h-125 p-6">
             <div className="flex p-1 bg-[#f5f5f7] rounded-xl mb-6">
               <button 
                 onClick={() => setActiveTab('activity')}
                 className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'activity' ? 'bg-white text-[#1d1d1f] shadow-sm' : 'text-[#86868b] hover:text-[#1d1d1f]'}`}
               >
                 My Reports
+              </button>
+              <button 
+                onClick={() => setActiveTab('my_activity')}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'my_activity' ? 'bg-white text-[#1d1d1f] shadow-sm' : 'text-[#86868b] hover:text-[#1d1d1f]'}`}
+              >
+                My Activity
               </button>
               <button 
                 onClick={() => setActiveTab('messages')}
@@ -3339,7 +4398,7 @@ const UserDashboard = ({ user, posts, onViewChange, onLogout, onUpdateUser, onSi
                     
                     <div className="flex items-center gap-4 mt-3 text-xs text-gray-400">
                       <span className="flex items-center gap-1"><ThumbsUp size={12}/> {post.upvotes}</span>
-                      <span className="flex items-center gap-1"><MessageCircle size={12}/> {post.comments.length}</span>
+                      <span className="flex items-center gap-1"><MessageCircle size={12}/> {(post.comments || []).length}</span>
                       <span className="flex items-center gap-1"><MapPin size={12}/> {post.city}</span>
                     </div>
                   </div>
@@ -3353,12 +4412,35 @@ const UserDashboard = ({ user, posts, onViewChange, onLogout, onUpdateUser, onSi
                     <Button variant="primary" onClick={() => onViewChange('create')}>File a Report</Button>
                   </div>
                 )
+              ) : activeTab === 'my_activity' ? (
+                myActivity.length > 0 ? myActivity.map(post => (
+                  <div key={post.id} className="p-5 hover:bg-gray-50 transition-colors group cursor-pointer" onClick={() => onViewChange('post', { post })}>
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">
+                          {post.upvotedBy?.includes(user.id) ? 'Upvoted' : post.vouchedBy?.includes(user.id) ? 'Vouched' : 'Commented'}
+                        </span>
+                        <span className="text-xs text-gray-400">• {post.date}</span>
+                      </div>
+                      <ChevronRight size={16} className="text-gray-300 group-hover:text-blue-600 transition-colors" />
+                    </div>
+                    <h4 className="font-bold text-gray-900 mb-1 group-hover:text-blue-600 transition-colors">{post.title}</h4>
+                    <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
+                      <span className="flex items-center gap-1"><User size={12}/> {post.author}</span>
+                      <span className="flex items-center gap-1"><MapPin size={12}/> {post.city}</span>
+                    </div>
+                  </div>
+                )) : (
+                  <div className="p-10 text-center text-gray-500">
+                    <p>No activity yet. Start engaging with the community!</p>
+                  </div>
+                )
               ) : activeTab === 'messages' ? (
                 messages.length > 0 ? messages.map(msg => (
                   <div key={msg.id} className={`p-5 hover:bg-gray-50 transition-colors cursor-pointer ${msg.unread ? 'bg-blue-50/30' : ''}`}>
                     <div className="flex justify-between items-start mb-1">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-gray-200 to-gray-300 flex items-center justify-center text-xs font-bold text-gray-600">
+                        <div className="w-8 h-8 rounded-full bg-linear-to-tr from-gray-200 to-gray-300 flex items-center justify-center text-xs font-bold text-gray-600">
                            {msg.sender.charAt(0)}
                         </div>
                         <span className="font-bold text-gray-900 text-sm">{msg.sender}</span>
@@ -3381,28 +4463,31 @@ const UserDashboard = ({ user, posts, onViewChange, onLogout, onUpdateUser, onSi
           </div>
         </div>
       </div>
+      {showPointsHistory && <PointsHistoryModal points={user.points || 0} onClose={() => setShowPointsHistory(false)} />}
     </div>
   );
 };
 
 // Impact Gallery Page Component
-const ImpactGalleryPage = ({ posts }) => {
+const ImpactGalleryPage = () => {
   const [filterState, setFilterState] = useState('All');
   const [filterCity, setFilterCity] = useState('All');
 
-  // Filter resolved posts with evidence
-  const resolvedPosts = useMemo(() => {
-    return posts.filter(p => p.status === 'Resolved' && p.evidence?.before && p.evidence?.after);
-  }, [posts]);
+  // Animation state for counter
+  const [count, setCount] = useState(0);
+  const targetCount = 42; // Hypothetical impacts per minute
 
-  // Apply state/city filters
-  const filteredPosts = useMemo(() => {
-    return resolvedPosts.filter(post => {
-      if (filterState !== 'All' && post.state !== filterState) return false;
-      if (filterCity !== 'All' && post.city !== filterCity) return false;
-      return true;
-    });
-  }, [resolvedPosts, filterState, filterCity]);
+  useEffect(() => {
+    let startTimestamp = null;
+    const duration = 2000; // 2 seconds
+    const step = (timestamp) => {
+      if (!startTimestamp) startTimestamp = timestamp;
+      const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+      setCount(Math.floor(progress * targetCount));
+      if (progress < 1) window.requestAnimationFrame(step);
+    };
+    window.requestAnimationFrame(step);
+  }, []);
 
   // Dynamic city options based on state selection
   const availableCities = useMemo(() => {
@@ -3411,41 +4496,45 @@ const ImpactGalleryPage = ({ posts }) => {
     return state ? state.cities : [];
   }, [filterState]);
 
-  // Calculate stats
-  const stats = {
-    totalFixed: filteredPosts.length,
-    totalVouches: filteredPosts.reduce((acc, p) => acc + (p.vouchCount || 0), 0),
-    citiesImpacted: new Set(filteredPosts.map(p => p.city)).size
-  };
-
   return (
-    <div className="max-w-[980px] mx-auto py-12 px-6">
+    <div className="max-w-245 mx-auto py-12 px-6">
       {/* Header */}
-      <div className="bg-[#1d1d1f] rounded-[30px] p-10 md:p-16 text-white mb-12 relative overflow-hidden text-center">
+      <div className="p-0.75 rounded-4xl bg-linear-to-r from-orange-500 via-white to-green-500 mb-12 shadow-2xl">
+      <div className="bg-[#1d1d1f] rounded-[30px] p-10 md:p-16 text-white relative overflow-hidden text-center h-full">
         <div className="absolute top-0 right-0 w-96 h-96 bg-green-500/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
         <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl -ml-20 -mb-20"></div>
         <div className="relative z-10">
           <Badge className="bg-green-500/20 text-green-300 border-none mb-6 inline-flex items-center gap-1"><CheckCircle size={12}/> Real Change</Badge>
-          <h1 className="text-5xl md:text-6xl font-semibold tracking-tight mb-6 leading-tight">Impact Gallery</h1>
-          <p className="text-[#86868b] text-xl max-w-2xl mx-auto font-medium">
-            Witness the transformation. Verified before and after stories from across the nation, proving that collective action works.
+          
+          <div className="mb-8">
+             <div className="flex items-baseline justify-center gap-3">
+                <span className="text-7xl md:text-9xl font-bold text-white tracking-tighter">{count}</span>
+                <span className="text-xl md:text-3xl text-gray-400 font-medium">Impacts / min</span>
+             </div>
+             <p className="text-sm text-green-400 font-mono mt-2 animate-pulse flex items-center justify-center gap-2"><span className="w-2 h-2 bg-green-400 rounded-full"></span> Live Activity Monitor</p>
+          </div>
+
+          <h1 className="text-3xl md:text-4xl font-semibold tracking-tight mb-6 leading-tight text-gray-200">Success Stories Launching</h1>
+          <p className="text-[#86868b] text-lg max-w-2xl mx-auto font-medium">
+            See the change. Verified before and after stories from across the nation will be shown here.
           </p>
         </div>
+      </div>
       </div>
 
       {/* Stats & Filters */}
       <div className="bg-white rounded-[30px] p-8 shadow-sm border border-gray-100 mb-12">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8 border-b border-gray-100 pb-8">
            <div className="text-center">
-             <div className="text-4xl font-bold text-[#1d1d1f] mb-1">{stats.totalFixed}</div>
+             <div className="text-4xl font-bold text-[#1d1d1f] mb-1">0</div>
              <div className="text-xs font-bold text-[#86868b] uppercase tracking-wider">Issues Resolved</div>
            </div>
            <div className="text-center border-l border-r border-gray-100">
-             <div className="text-4xl font-bold text-[#0071e3] mb-1">{stats.totalVouches}</div>
+             <div className="text-4xl font-bold text-[#0071e3] mb-1">0</div>
              <div className="text-xs font-bold text-[#86868b] uppercase tracking-wider">Community Vouches</div>
            </div>
            <div className="text-center">
-             <div className="text-4xl font-bold text-green-600 mb-1">{stats.citiesImpacted}</div>
+             <div className="text-4xl font-bold text-green-600 mb-1">0</div>
              <div className="text-xs font-bold text-[#86868b] uppercase tracking-wider">Cities Transformed</div>
            </div>
         </div>
@@ -3457,7 +4546,7 @@ const ImpactGalleryPage = ({ posts }) => {
            <select 
              value={filterState}
              onChange={(e) => { setFilterState(e.target.value); setFilterCity('All'); }}
-             className="px-4 py-2 rounded-xl bg-[#f5f5f7] border-none text-sm focus:ring-2 focus:ring-[#0071e3]/20 cursor-pointer min-w-[150px] text-[#1d1d1f] font-medium"
+             className="px-4 py-2 rounded-xl bg-[#f5f5f7] border-none text-sm focus:ring-2 focus:ring-[#0071e3]/20 cursor-pointer min-w-37.5 text-[#1d1d1f] font-medium"
            >
              <option value="All">All States</option>
              {STATES.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
@@ -3465,7 +4554,7 @@ const ImpactGalleryPage = ({ posts }) => {
            <select 
              value={filterCity}
              onChange={(e) => setFilterCity(e.target.value)}
-             className="px-4 py-2 rounded-xl bg-[#f5f5f7] border-none text-sm focus:ring-2 focus:ring-[#0071e3]/20 cursor-pointer min-w-[150px] text-[#1d1d1f] font-medium"
+             className="px-4 py-2 rounded-xl bg-[#f5f5f7] border-none text-sm focus:ring-2 focus:ring-[#0071e3]/20 cursor-pointer min-w-37.5 text-[#1d1d1f] font-medium"
            >
              <option value="All">All Cities</option>
              {availableCities.map(c => <option key={c} value={c}>{c}</option>)}
@@ -3474,55 +4563,15 @@ const ImpactGalleryPage = ({ posts }) => {
       </div>
 
       {/* Gallery Grid */}
-      {filteredPosts.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {filteredPosts.map(post => (
-            <div key={post.id} className="bg-white rounded-[24px] overflow-hidden shadow-sm hover:shadow-xl transition-all duration-500 group border border-gray-100">
-              {/* Before/After Slider Effect */}
-              <div className="relative h-64 overflow-hidden">
-                <div className="absolute inset-0 flex">
-                   <div className="w-1/2 h-full relative border-r border-white/20">
-                      <img src={post.evidence.before} alt="Before" className="w-full h-full object-cover" />
-                      <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-md px-2.5 py-1 text-[10px] font-bold rounded-md text-white">BEFORE</div>
-                   </div>
-                   <div className="w-1/2 h-full relative">
-                      <img src={post.evidence.after} alt="After" className="w-full h-full object-cover" />
-                      <div className="absolute bottom-4 right-4 bg-green-600 shadow-lg px-2.5 py-1 text-[10px] font-bold rounded-md text-white flex items-center gap-1">
-                        AFTER <CheckCircle size={10} />
-                      </div>
-                   </div>
-                </div>
-              </div>
-              
-              <div className="p-6">
-                <div className="flex justify-between items-start mb-3">
-                   <Badge className="bg-[#f5f5f7] text-[#1d1d1f] border-none">{post.city}</Badge>
-                   <div className="flex items-center gap-1 text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-lg">
-                      <ThumbsUp size={12} /> {post.upvotes} Upvotes
-                   </div>
-                </div>
-                <h3 className="font-semibold text-xl text-[#1d1d1f] mb-2">{post.title}</h3>
-                <p className="text-sm text-[#86868b] line-clamp-2 mb-4 font-medium">{post.description}</p>
-                
-                <div className="flex items-center gap-3 pt-4 border-t border-gray-50">
-                   <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white">
-                     {post.author.charAt(0)}
-                   </div>
-                   <div className="flex flex-col">
-                     <span className="text-xs font-bold text-[#1d1d1f]">{post.author}</span>
-                     <span className="text-[10px] text-[#86868b]">Reporter</span>
-                   </div>
-                </div>
-              </div>
-            </div>
-          ))}
+      <div className="bg-white rounded-[30px] shadow-sm border border-gray-100 p-12 text-center">
+        <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6 text-green-600">
+          <Camera size={40} />
         </div>
-      ) : (
-        <div className="text-center py-20 bg-gray-50 rounded-[30px] border border-dashed border-gray-200">
-          <p className="text-gray-500 mb-4">No resolved issues found for this filter.</p>
-          <button onClick={() => { setFilterState('All'); setFilterCity('All'); }} className="text-[#0071e3] text-sm font-medium hover:underline">Clear Filters</button>
-        </div>
-      )}
+        <h3 className="text-2xl font-bold text-[#1d1d1f] mb-3">Impact Stories Processing</h3>
+        <p className="text-[#86868b] max-w-md mx-auto mb-8">
+          Our team is verifying the first batch of resolved reports. Real transformation stories will appear here shortly.
+        </p>
+      </div>
     </div>
   );
 };
@@ -3535,40 +4584,228 @@ export default function App() {
   const [view, setView] = useState('home'); 
   const [selectedCity, setSelectedCity] = useState(null);
   const [selectedPost, setSelectedPost] = useState(null);
+  const [postComments, setPostComments] = useState([]);
+  const [commentText, setCommentText] = useState('');
+  const [commentsPage, setCommentsPage] = useState(0);
+  const [totalComments, setTotalComments] = useState(0);
+  const [editingCommentId, setEditingCommentId] = useState(null);
+  const [editText, setEditText] = useState('');
+  const [replyingToId, setReplyingToId] = useState(null);
+  const [replyText, setReplyText] = useState('');
+  const MAX_COMMENT_LENGTH = 300;
+  const [editingPost, setEditingPost] = useState(null);
+  const [myChapterIds, setMyChapterIds] = useState([]);
   
   // NEW: Home Location Filter State
   const [homeCityFilter, setHomeCityFilter] = useState('All');
   
   // Persistence Logic
   const [posts, setPosts] = useState(() => {
-    const saved = localStorage.getItem('indiaAct_posts_v2');
+    const saved = localStorage.getItem('indiaAct_posts');
     return saved ? JSON.parse(saved) : INITIAL_POSTS;
   });
-  
-  const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('indiaAct_user');
-    return saved ? JSON.parse(saved) : null;
-  });
-
+  const [appIsLoading, setAppIsLoading] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [toast, setToast] = useState(null);
   const [sharePost, setSharePost] = useState(null);
   const [subscribedCities, setSubscribedCities] = useState([]);
-
-  const [chapters, setChapters] = useState(INITIAL_CHAPTERS);
-
-  const handleJoinChapter = (chapter) => setToast({ message: `Request sent to join ${chapter.name}!`, type: 'success' });
-
-  // Save state updates to local storage
+  const [resourceLinks, setResourceLinks] = useState(DEFAULT_RESOURCES);
+  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  
+  // Fetch posts from Supabase on load
   useEffect(() => {
-    localStorage.setItem('indiaAct_posts_v2', JSON.stringify(posts));
+    let isActive = true;
+    const loadReports = async () => {
+      setAppIsLoading(true);
+      const cached = localStorage.getItem('indiaAct_posts');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (isActive && Array.isArray(parsed)) {
+            setPosts(parsed);
+          }
+        } catch (e) {
+          console.warn('Failed to parse cached posts', e);
+        }
+      }
+
+      try {
+        const rows = await fetchReports();
+        if (!isActive) return;
+        const mapped = rows.map(mapReportRowToPost);
+        setPosts(mapped);
+        localStorage.setItem('indiaAct_posts', JSON.stringify(mapped));
+      } catch (err) {
+        console.error(err);
+        if (isActive) {
+          setToast({ message: err?.message || 'Failed to load reports.', type: 'error' });
+        }
+      } finally {
+        if (isActive) setAppIsLoading(false);
+      }
+    };
+
+    loadReports();
+    return () => { isActive = false; };
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('indiaAct_posts', JSON.stringify(posts));
   }, [posts]);
+  
+  const [user, setUser] = useState(null);
+
+  // Initial auth bootstrap + listener
+  useEffect(() => {
+    let active = true;
+    const init = async () => {
+      try {
+        const current = await getCurrentUser();
+        if (active) setUser(current);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    init();
+    const unsubscribe = onAuthStateChange((nextUser) => {
+      if (active) setUser(nextUser);
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  const [allUsers, setAllUsers] = useState(() => {
+    const saved = localStorage.getItem('indiaAct_users');
+    return saved ? JSON.parse(saved) : MOCK_USERS;
+  });
 
   useEffect(() => {
-    if (user) localStorage.setItem('indiaAct_user', JSON.stringify(user));
-    else localStorage.removeItem('indiaAct_user');
+    localStorage.setItem('indiaAct_users', JSON.stringify(allUsers));
+  }, [allUsers]);
+
+  useEffect(() => {
+    const loadProfiles = async () => {
+      if (!user || user.role !== 'admin') return;
+      try {
+        const profiles = await listProfiles();
+        const normalized = profiles.map((p) => ({
+          id: p.id,
+          name: p.name,
+          email: p.email || '',
+          role: p.role || 'user',
+          status: p.status || 'active',
+          joinedDate: p.created_at
+            ? new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+            : '',
+          city: p.city || '',
+          phone: p.phone || '',
+          points: p.points || 0,
+          occupation: p.occupation || ''
+        }));
+        setAllUsers(normalized);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    loadProfiles();
   }, [user]);
+
+  const [systemSettings, setSystemSettings] = useState({
+    maintenanceMode: false,
+    allowSignups: true,
+    globalAnnouncement: '',
+    autoModeration: true
+  });
+  const [auditLog, setAuditLog] = useState(() => {
+    const saved = localStorage.getItem('indiaAct_auditLog');
+    return saved ? JSON.parse(saved) : [{ id: Date.now(), timestamp: new Date().toLocaleString(), action: 'SYSTEM: Application Initialized.' }];
+  });
+
+  // Sync Real Users from Supabase for Admin Panel
+  useEffect(() => {
+    if (user) {
+      setAllUsers((prev) => {
+        const exists = prev.some((u) => u.id === user.id);
+        if (exists) {
+          return prev.map((u) => (u.id === user.id ? { ...u, ...user } : u));
+        }
+        return [user, ...prev];
+      });
+    }
+  }, [user]);
+
+  // Fetch user's chapter memberships
+  useEffect(() => {
+    const loadMemberships = async () => {
+      if (!user) {
+        setMyChapterIds([]);
+        return;
+      }
+      try {
+        const ids = await listMyChapterIds(user.id);
+        setMyChapterIds(ids);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    loadMemberships();
+  }, [user]);
+
+  const awardPoints = async (userId, points) => {
+    try {
+      if (user && user.id === userId) {
+        setUser(prev => ({ ...prev, points: (prev.points || 0) + points }));
+      }
+    } catch (e) {
+      console.error("Failed to award points", e);
+    }
+  };
+
+  const [chapters, setChapters] = useState(() => {
+    const saved = localStorage.getItem('indiaAct_chapters');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('indiaAct_chapters', JSON.stringify(chapters));
+  }, [chapters]);
+
+  const handleJoinChapter = async (chapter) => {
+    if (!user) { setToast({ message: "Please login to join a chapter.", type: 'error' }); return; }
+    if (user?.status === 'banned') { setToast({ message: "Account banned. Action restricted.", type: 'error' }); return; }
+    if (myChapterIds.includes(chapter.id)) {
+      setToast({ message: `You are already a member of ${chapter.name}.`, type: 'info' });
+      return;
+    }
+    
+    setMyChapterIds(prev => [...new Set([...prev, chapter.id])]);
+    setChapters(prev => prev.map(c => c.id === chapter.id ? { ...c, members: (c.members || 0) + 1 } : c));
+
+    try {
+      await joinChapter(chapter.id, user.id);
+      setToast({ message: `Joined ${chapter.name}!`, type: 'success' });
+    } catch (err) {
+      console.error(err);
+      setToast({ message: err?.message || 'Failed to join chapter.', type: 'error' });
+    }
+  };
+
+  const handleRegisterChapter = async (formData) => {
+    if (!user) { setToast({ message: "Please login to register a chapter.", type: 'error' }); return; }
+    if (user?.status === 'banned') { setToast({ message: "Account banned. Action restricted.", type: 'error' }); return; }
+    try {
+      const created = await createChapter(formData, user.id);
+      setChapters(prev => [{ ...created, members: 1 }, ...prev]);
+      setMyChapterIds(prev => [...new Set([...prev, created.id])]);
+      setToast({ message: "Chapter registered! Pending verification.", type: 'success' });
+    } catch (err) {
+      console.error(err);
+      setToast({ message: err?.message || 'Failed to register chapter.', type: 'error' });
+    }
+  };
 
   useEffect(() => {
     if (toast) {
@@ -3576,7 +4813,40 @@ export default function App() {
       return () => clearTimeout(timer);
     }
   }, [toast]);
+
+  useEffect(() => {
+    const loadUserChannels = async () => {
+      if (!user) {
+        setNotifications([]);
+        setSubscribedCities([]);
+        return;
+      }
+      try {
+        const [notificationRows, subscriptionRows] = await Promise.all([
+          listNotifications(user.id),
+          listSubscriptions(user.id)
+        ]);
+
+        setNotifications(
+          notificationRows.map((n) => ({
+            id: n.id,
+            text: n.payload?.text || n.kind,
+            time: new Date(n.created_at).toLocaleString(),
+            read: !!n.read
+          }))
+        );
+        setSubscribedCities(subscriptionRows.map((s) => s.city));
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    loadUserChannels();
+  }, [user]);
   
+  useEffect(() => {
+    localStorage.setItem('indiaAct_auditLog', JSON.stringify(auditLog));
+  }, [auditLog]);
+
   const navigate = (newView, params = {}) => {
     setView(newView);
     if (params.city) setSelectedCity(params.city);
@@ -3584,14 +4854,52 @@ export default function App() {
     window.scrollTo(0, 0);
   };
 
-  const performLogin = (userData) => {
-    setUser(userData);
-    setView('dashboard');
-    setToast({ message: 'Welcome back, Citizen!', type: 'success' });
+  // Fetch chapters + resources once
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [chapterRows, resourceRows] = await Promise.all([listChapters(), listResourceLinks()]);
+        setChapters(chapterRows);
+        setResourceLinks(resourceRows);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    load();
+  }, []);
+
+  const logAdminAction = (action) => {
+    const newLog = {
+      id: Date.now(),
+      timestamp: new Date().toLocaleString(),
+      action: `SUPERADMIN: ${action}`
+    };
+    setAuditLog(prev => [newLog, ...prev]);
   };
 
-  const handleUpdateProfile = (updatedUser) => {
-    setUser(updatedUser);
+  const handleAuthSuccess = async ({ email, password }) => {
+    const loggedInUser = await signIn({ email, password });
+    setUser(loggedInUser);
+    setView('dashboard');
+    setToast({ message: 'Welcome back!', type: 'success' });
+  };
+
+  const handleRegisterUser = async (payload) => {
+    const newUser = await signUp(payload);
+    setUser(newUser);
+    setAllUsers(prev => {
+      const exists = prev.some((u) => u.id === newUser.id);
+      return exists ? prev.map((u) => (u.id === newUser.id ? newUser : u)) : [newUser, ...prev];
+    });
+    setView('dashboard');
+    setToast({ message: 'Account created successfully!', type: 'success' });
+  };
+
+  const handleUpdateProfile = async (updatedUser) => {
+    const profile = await updateMyProfile(updatedUser.id, updatedUser);
+    const normalized = { ...updatedUser, ...profile };
+    setUser(normalized);
+    setAllUsers(prev => prev.map(u => u.id === normalized.id ? normalized : u));
     setView('dashboard');
     setToast({ message: 'Profile updated successfully!', type: 'success' });
   };
@@ -3604,69 +4912,402 @@ export default function App() {
       read: false
     };
     setNotifications(prev => [newNotification, ...prev]);
+    // Security Fix: Removed client-side createNotification call. 
+    // Alerts should only be generated by the backend system.
     setToast({ message: `Test alert sent to ${config.channels.join(' & ')}`, type: 'success' });
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await signOut().catch(console.error);
     setUser(null);
     setToast({ message: 'Logged out successfully.', type: 'success' });
     navigate('home');
   };
 
-  const handleCreatePost = (data) => {
-    const newPost = {
-      id: Date.now(),
-      ...data,
-      author: user ? user.name : 'Anonymous',
-      authorId: user ? user.id : 'anon',
-      date: 'Just now',
-      status: 'Open',
-      upvotes: 0,
-      vouchCount: 0,
-      trustScore: 'Low',
-      flags: 0,
-      comments: [],
-      tags: [data.type],
-      isVolunteerDrive: data.type === 'volunteer',
-      badges: ['New Reporter'],
-      timeline: [
-        { status: 'Reported', date: 'Just now', desc: 'Issue submitted by user.' }
-      ]
-    };
-    setPosts([newPost, ...posts]);
-    setToast({ message: 'Report submitted! Pending moderation.', type: 'success' });
-    navigate('home'); 
+  const handleSavePost = async (data) => {
+    if (user?.status === 'banned') { setToast({ message: "Account banned. Action restricted.", type: 'error' }); return; }
+    // Remove form-specific fields that don't exist in the database
+    const { imageFile, videoFile, ...postData } = data;
+
+    if (editingPost) {
+      // Update existing post
+      if (postData.type !== 'volunteer') {
+        postData.eventDate = null;
+        postData.eventTime = null;
+      }
+
+      setAppIsLoading(true);
+      try {
+        const mediaUpdates = await uploadEvidence(editingPost.id, imageFile, videoFile);
+        const payload = {
+          type: postData.type,
+          title: postData.title,
+          description: postData.description,
+          state: postData.state,
+          city: postData.city,
+          location: postData.location || `${postData.city}, ${postData.state}`,
+          event_date: postData.type === 'volunteer' ? (postData.eventDate || null) : null,
+          event_time: postData.type === 'volunteer' ? (postData.eventTime || null) : null,
+          video_link: postData.videoLink || null,
+          ...(mediaUpdates.image_url ? { image_url: mediaUpdates.image_url } : {}),
+          ...(mediaUpdates.video_url ? { video_url: mediaUpdates.video_url } : {})
+        };
+
+        const savedRow = await updateReport(editingPost.id, payload);
+        const savedPost = mapReportRowToPost(savedRow);
+
+        setPosts(prev => prev.map(p => p.id === editingPost.id ? savedPost : p));
+        setToast({ message: 'Report updated successfully!', type: 'success' });
+        setEditingPost(null);
+        navigate('post', { post: savedPost });
+      } catch (err) {
+        console.error(err);
+        setToast({ message: err?.message || 'Failed to update report.', type: 'error' });
+      } finally {
+        setAppIsLoading(false);
+      }
+      return;
+    }
+
+    setAppIsLoading(true);
+    try {
+      const reportId = crypto.randomUUID();
+      const { image_url, video_url } = await uploadEvidence(reportId, imageFile, videoFile);
+
+      const payload = {
+        id: reportId,
+        type: postData.type,
+        title: postData.title,
+        description: postData.description,
+        state: postData.state,
+        city: postData.city,
+        location: postData.location || `${postData.city}, ${postData.state}`,
+        event_date: postData.type === 'volunteer' ? (postData.eventDate || null) : null,
+        event_time: postData.type === 'volunteer' ? (postData.eventTime || null) : null,
+        image_url,
+        video_url,
+        video_link: postData.videoLink || null,
+        author_name: user?.name || 'Anonymous',
+        author_id: user?.id || null,
+        status: 'Open'
+      };
+
+      const savedRow = await createReport(payload);
+      const savedPost = mapReportRowToPost(savedRow);
+      setPosts(prev => [savedPost, ...prev]);
+
+      if (user) {
+        await awardPoints(user.id, 10);
+        setToast({ message: 'Report submitted! +10 Civic Points earned.', type: 'success' });
+      } else {
+        setToast({ message: 'Report submitted successfully!', type: 'success' });
+      }
+      navigate('post', { post: savedPost });
+    } catch (err) {
+      console.error(err);
+      setToast({ message: err?.message || 'Failed to submit report.', type: 'error' });
+    } finally {
+      setAppIsLoading(false);
+    }
   };
 
-  // Community Policing: Vouch System
-  const handleVouch = (postId) => {
-    if (!user) { setToast({ message: "Login to vouch for this issue.", type: 'error' }); return; }
-    
+  const handleEditPostClick = (post) => {
+    setEditingPost(post);
+    navigate('create');
+  };
+
+  const handleLike = async (postId) => {
+    if (user?.status === 'banned') { setToast({ message: "Account banned.", type: 'error' }); return; }
+    if (!user) { setToast({ message: "Login to support this issue.", type: 'error' }); return; }
+
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
+
+    if (post.upvotedBy?.includes(user.id)) {
+      setToast({ message: "You have already supported this.", type: 'error' });
+      return;
+    }
+
+    // Optimistic Update
+    const nextUpvotes = (post.upvotes || 0) + 1;
     setPosts(prev => prev.map(p => {
       if (p.id === postId) {
-        const newCount = (p.vouchCount || 0) + 1;
-        // Auto-upgrade Trust Score based on community validation
-        const newScore = getTrustScore(newCount, p.evidence);
-        return { ...p, vouchCount: newCount, trustScore: newScore };
+        return { ...p, upvotes: nextUpvotes, upvotedBy: [...(p.upvotedBy || []), user.id] };
       }
       return p;
     }));
+    if (selectedPost?.id === postId) {
+      setSelectedPost(prev => ({ ...prev, upvotes: nextUpvotes, upvotedBy: [...(prev.upvotedBy || []), user.id] }));
+    }
+
+    try {
+      const { active, counters } = await toggleVote(postId, user.id);
+      if (!active) {
+        setToast({ message: "You have already supported this.", type: 'error' });
+        return;
+      }
+      setPosts(prev => prev.map(p => p.id === postId ? { ...p, upvotes: counters.upvotes } : p));
+      if (selectedPost?.id === postId) {
+        setSelectedPost(prev => ({ ...prev, upvotes: counters.upvotes }));
+      }
+    } catch (err) {
+      console.error(err);
+      setToast({ message: err?.message || 'Failed to sync upvote.', type: 'error' });
+    }
+  };
+
+  // Fetch comments when entering post view and subscribe to changes
+  useEffect(() => {
+    const COMMENTS_PER_PAGE = 5;
+
+    if (view === 'post' && selectedPost) {
+      const loadInitialComments = async () => {
+        try {
+          const { rows, count } = await listComments(selectedPost.id, { limit: COMMENTS_PER_PAGE, offset: 0 });
+          setPostComments(rows);
+          setTotalComments(count);
+          setCommentsPage(1);
+        } catch (err) {
+          console.error(err);
+          setPostComments(selectedPost.comments || []);
+          setTotalComments((selectedPost.comments || []).length);
+          setCommentsPage(1);
+        }
+      };
+      loadInitialComments();
+    } else {
+      setPostComments([]);
+      setCommentText('');
+      setTotalComments(0);
+      setCommentsPage(0);
+    }
+
+    return () => {
+    };
+  }, [view, selectedPost]);
+
+  const handleLoadMoreComments = async () => {
+    if (!selectedPost) return;
+    const COMMENTS_PER_PAGE = 5;
+    try {
+      const { rows } = await listComments(selectedPost.id, {
+        limit: COMMENTS_PER_PAGE,
+        offset: commentsPage * COMMENTS_PER_PAGE
+      });
+      setPostComments((prev) => [...rows, ...prev]);
+      setCommentsPage((prev) => prev + 1);
+    } catch (err) {
+      console.error(err);
+      setToast({ message: err?.message || 'Failed to load older comments.', type: 'error' });
+    }
+  };
+
+  const handlePostComment = async (text = commentText, parentId = null) => {
+    const content = text.trim();
+    if (!content) return;
+    if (user?.status === 'banned') { setToast({ message: "Account banned. Action restricted.", type: 'error' }); return; }
+    
+    if (content.length > MAX_COMMENT_LENGTH) {
+      setToast({ message: `Comment exceeds ${MAX_COMMENT_LENGTH} characters.`, type: 'error' });
+      return;
+    }
+
+    if (!user) {
+      setToast({ message: 'Please login to comment.', type: 'error' });
+      return;
+    }
+
+    if (!selectedPost) {
+      setToast({ message: 'Error: No post selected.', type: 'error' });
+      return;
+    }
+
+    let newComment;
+    try {
+      newComment = await createComment({
+        reportId: selectedPost.id,
+        authorId: user.id,
+        authorName: user.name,
+        text: content,
+        parentId
+      });
+    } catch (err) {
+      console.error(err);
+      setToast({ message: err?.message || 'Failed to post comment.', type: 'error' });
+      return;
+    }
+
+    setPostComments(prev => [...prev, newComment]);
+    
+    // Sync comment count in main posts list so feed updates immediately
+    setPosts(prev => prev.map(p => p.id === selectedPost.id ? { ...p, comments: [...(p.comments || []), newComment] } : p));
+
+    if (parentId) {
+      setReplyText('');
+      setReplyingToId(null);
+    } else {
+      setCommentText('');
+    }
+    setTotalComments(prev => prev + 1);
+    setToast({ message: 'Comment posted!', type: 'success' });
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    await deleteCommentRecord(commentId).catch((err) => {
+      console.error(err);
+      setToast({ message: err?.message || 'Failed to delete comment.', type: 'error' });
+    });
+    setPostComments(prev => prev.filter(c => c.id !== commentId));
+    setTotalComments(prev => Math.max(0, prev - 1));
+    
+    // Sync comment count in main posts list
+    setPosts(prev => prev.map(p => p.id === selectedPost.id ? { ...p, comments: (p.comments || []).filter(c => c.id !== commentId) } : p));
+
+    setToast({ message: 'Comment deleted.', type: 'success' });
+  };
+
+  const handleEditComment = (comment) => {
+    setEditingCommentId(comment.id);
+    setEditText(comment.text);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCommentId(null);
+    setEditText('');
+  };
+
+  const handleSaveEdit = async (commentId) => {
+    if (!editText.trim()) return;
+    
+    if (editText.length > MAX_COMMENT_LENGTH) {
+      setToast({ message: `Comment exceeds ${MAX_COMMENT_LENGTH} characters.`, type: 'error' });
+      return;
+    }
+
+    try {
+      const updated = await updateCommentRecord(commentId, editText);
+      setPostComments(prev => prev.map(c => c.id === commentId ? { ...c, text: updated.text, updated_at: updated.updated_at } : c));
+    } catch (err) {
+      console.error(err);
+      setToast({ message: err?.message || 'Failed to update comment.', type: 'error' });
+      return;
+    }
+    setEditingCommentId(null);
+
+    setToast({ message: 'Comment updated.', type: 'success' });
+  };
+
+  // Build comment tree for nested display
+  const commentTree = useMemo(() => {
+    const map = {};
+    const roots = [];
+    
+    // Create a map of all comments
+    postComments.forEach(c => {
+      map[c.id] = { ...c, children: [] };
+    });
+
+    postComments.forEach(c => {
+      if (c.parent_id && map[c.parent_id]) {
+        map[c.parent_id].children.push(map[c.id]);
+      } else {
+        roots.push(map[c.id]);
+      }
+    });
+    return roots;
+  }, [postComments]);
+
+  // Community Policing: Vouch System
+  const handleVouch = async (postId) => {
+    if (!user) { setToast({ message: "Login to vouch for this issue.", type: 'error' }); return; }
+    if (user?.status === 'banned') { setToast({ message: "Account banned.", type: 'error' }); return; }
+
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
+
+    if (post.vouchedBy?.includes(user.id)) {
+      setToast({ message: "You have already vouched for this.", type: 'error' });
+      return;
+    }
+    
+    const nextCount = (post.vouchCount || 0) + 1;
+    const nextScore = getTrustScore(nextCount, post.evidence);
+    setPosts(prev => prev.map(p => {
+      if (p.id === postId) {
+        return { ...p, vouchCount: nextCount, trustScore: nextScore, vouchedBy: [...(p.vouchedBy || []), user.id] };
+      }
+      return p;
+    }));
+    if (selectedPost?.id === postId) {
+      setSelectedPost(prev => ({ ...prev, vouchCount: nextCount, trustScore: nextScore, vouchedBy: [...(prev.vouchedBy || []), user.id] }));
+    }
     setToast({ message: "You vouched for this issue. Trust Score updated.", type: 'success' });
+
+    // Award points
+    await awardPoints(user.id, 2); // Voucher gets 2 points
+    if (post.authorId && post.authorId !== 'anon') await awardPoints(post.authorId, 5); // Author gets 5 points
+
+    try {
+      const { active, counters } = await toggleVouch(postId, user.id);
+      if (!active) {
+        setToast({ message: "You have already vouched for this.", type: 'error' });
+        return;
+      }
+      const syncedScore = getTrustScore(counters.vouch_count || nextCount, post.evidence);
+      setPosts(prev => prev.map(p => p.id === postId ? { ...p, vouchCount: counters.vouch_count, trustScore: syncedScore } : p));
+      if (selectedPost?.id === postId) {
+        setSelectedPost(prev => ({ ...prev, vouchCount: counters.vouch_count, trustScore: syncedScore }));
+      }
+    } catch (err) {
+      console.error(err);
+      setToast({ message: err?.message || 'Failed to sync vouch.', type: 'error' });
+    }
   };
 
   // Moderation: Flagging System
-  const handleFlag = (postId) => {
+  const handleFlag = async (postId) => {
+    if (user?.status === 'banned') { setToast({ message: "Account banned.", type: 'error' }); return; }
+    if (!user) { setToast({ message: "Login to flag this report.", type: 'error' }); return; }
+
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
+
+    if (post.flaggedBy?.includes(user.id)) {
+      setToast({ message: "You have already flagged this.", type: 'error' });
+      return;
+    }
+
+    const nextFlags = (post.flags || 0) + 1;
     setPosts(prev => prev.map(p => {
       if (p.id === postId) {
-        return { ...p, flags: (p.flags || 0) + 1 };
+        return { ...p, flags: nextFlags, flaggedBy: [...(p.flaggedBy || []), user.id] };
       }
       return p;
     }));
+    if (selectedPost?.id === postId) {
+      setSelectedPost(prev => ({ ...prev, flags: nextFlags, flaggedBy: [...(prev.flaggedBy || []), user.id] }));
+    }
     setToast({ message: "Post flagged for review.", type: 'success' });
+
+    try {
+      const result = await flagReport(postId, user.id, 'User flag');
+      if (result.alreadyFlagged) {
+        setToast({ message: "You have already flagged this.", type: 'error' });
+        return;
+      }
+      setPosts(prev => prev.map(p => p.id === postId ? { ...p, flags: result.counters.flags } : p));
+      if (selectedPost?.id === postId) {
+        setSelectedPost(prev => ({ ...prev, flags: result.counters.flags }));
+      }
+    } catch (err) {
+      console.error(err);
+      setToast({ message: err?.message || 'Failed to sync flag.', type: 'error' });
+    }
   };
 
-  const handleVolunteer = (postId) => {
+  const handleVolunteer = async (postId) => {
     if (!user) { setToast({ message: "Please login to join!", type: 'error' }); return; }
+    if (user?.status === 'banned') { setToast({ message: "Account banned.", type: 'error' }); return; }
     
     setPosts(prev => prev.map(p => {
       if (p.id === postId) {
@@ -3676,77 +5317,323 @@ export default function App() {
       }
       return p;
     }));
-    setToast({ message: "Volunteer status updated.", type: 'success' });
+
+    const post = posts.find(p => p.id === postId);
+    if (post) {
+      const hasVolunteered = post.volunteers?.includes(user.id);
+      
+      if (!hasVolunteered) {
+        await awardPoints(user.id, 30); // Joining a drive
+        setToast({ message: "Joined drive! +30 Civic Points earned.", type: 'success' });
+      } else { 
+        // Deduct points if leaving to prevent farming
+        // Note: In a real app, we'd check if points were actually awarded first, 
+        // but for now this prevents the infinite loop exploit.
+        await awardPoints(user.id, -30); 
+        setToast({ message: "You left the drive. Points reverted.", type: 'info' });
+      }
+    }
   };
 
   // Post Lifecycle: Add Update
-  const handleAddTimelineUpdate = (postId, updateText) => {
+  const handleAddTimelineUpdate = async (postId, updateText) => {
+    if (user?.status === 'banned') { setToast({ message: "Account banned.", type: 'error' }); return; }
     if (!updateText.trim()) return;
     
+    const newEvent = { status: 'Update', date: new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }), desc: updateText };
+
     setPosts(prev => prev.map(p => {
       if (p.id === postId) {
         return {
           ...p,
-          timeline: [...p.timeline, { status: 'Update', date: 'Just now', desc: updateText }]
+          timeline: [...(p.timeline || []), newEvent]
         };
       }
       return p;
     }));
+
     setToast({ message: "Timeline updated successfully.", type: 'success' });
   };
 
+  // Recursive function to render comments
+  const renderComment = (c, depth = 0) => (
+    <div key={c.id} className={`bg-white p-4 rounded-xl border border-gray-100 shadow-sm group ${depth > 0 ? 'ml-4 md:ml-8 mt-3 border-l-4 border-l-blue-100' : 'mb-3'}`}>
+      <div className="flex justify-between items-start mb-1">
+        <div className="font-medium text-sm text-gray-900 flex items-center gap-2">
+           {c.author_name} {c.author_name === 'Admin' && <Badge className="bg-blue-100 text-blue-700">MOD</Badge>}
+        </div>
+        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {user && (
+            <button 
+              onClick={() => setReplyingToId(replyingToId === c.id ? null : c.id)}
+              className="text-gray-400 hover:text-blue-600 p-1"
+              title="Reply"
+            >
+              <Reply size={14} />
+            </button>
+          )}
+          {(user && (user.id === c.author_id || user.role === 'admin')) && editingCommentId !== c.id && (
+            <>
+              <button 
+                onClick={() => handleEditComment(c)}
+                className="text-gray-400 hover:text-blue-600 p-1"
+                title="Edit"
+              >
+                <Edit size={14} />
+              </button>
+              <button 
+                onClick={() => handleDeleteComment(c.id)}
+                className="text-gray-400 hover:text-red-600 p-1"
+                title="Delete"
+              >
+                <Trash2 size={14} />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+      
+      {editingCommentId === c.id ? (
+        <div className="mt-2">
+          <input 
+            type="text" 
+            className="w-full p-2 border border-blue-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 mb-2"
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit(c.id)}
+            autoFocus
+          />
+          <div className="flex justify-between items-center">
+            <span className={`text-xs ${editText.length > MAX_COMMENT_LENGTH ? 'text-red-500' : 'text-gray-400'}`}>
+              {editText.length}/{MAX_COMMENT_LENGTH}
+            </span>
+            <div className="flex gap-2">
+              <button onClick={handleCancelEdit} className="text-xs text-gray-500 hover:text-gray-700 font-medium px-2 py-1">Cancel</button>
+              <button onClick={() => handleSaveEdit(c.id)} className="text-xs bg-blue-600 text-white px-3 py-1 rounded-md font-medium hover:bg-blue-700">Save</button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <p className="text-sm text-gray-600">{c.text}</p>
+      )}
+
+      {replyingToId === c.id && (
+        <div className="mt-3 pl-4 border-l-2 border-gray-200">
+          <input 
+            type="text" 
+            placeholder="Write a reply..." 
+            className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 mb-2"
+            value={replyText}
+            onChange={(e) => setReplyText(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handlePostComment(replyText, c.id)}
+            autoFocus
+          />
+          <div className="flex justify-between items-center">
+             <span className={`text-xs ${replyText.length > MAX_COMMENT_LENGTH ? 'text-red-500' : 'text-gray-400'}`}>{replyText.length}/{MAX_COMMENT_LENGTH}</span>
+             <button onClick={() => handlePostComment(replyText, c.id)} className="text-xs bg-gray-900 text-white px-3 py-1 rounded-md font-medium hover:bg-black">Reply</button>
+          </div>
+        </div>
+      )}
+
+      {c.children && c.children.length > 0 && (
+        <div className="mt-2">
+          {c.children.map(child => renderComment(child, depth + 1))}
+        </div>
+      )}
+    </div>
+  );
+
   // Admin Actions
-  const handleDeletePost = (id) => {
+  const handleDeletePost = async (id, reason) => {
     setPosts(posts.filter(p => p.id !== id));
+    if (user?.role === 'admin') {
+      try {
+        await deleteReportAdmin({ adminUserId: user.id, reportId: id });
+      } catch (err) {
+        console.error(err);
+        setToast({ message: err?.message || 'Failed to delete report in backend.', type: 'error' });
+      }
+    }
+    
+    const reasonLog = reason ? ` Reason: ${reason}` : '';
+    logAdminAction(`Deleted post with ID #${id}.${reasonLog}`);
     setToast({ message: 'Post permanently removed.', type: 'success' });
   };
 
-  const handleVerifyPost = (id) => {
+  const handleBulkDeletePosts = async (ids) => {
+    setPosts(posts.filter(p => !ids.includes(p.id)));
+    if (user?.role === 'admin') {
+      await Promise.all(ids.map((id) => deleteReportAdmin({ adminUserId: user.id, reportId: id }).catch(console.error)));
+    }
+    logAdminAction(`Bulk deleted ${ids.length} posts.`);
+    setToast({ message: `${ids.length} posts permanently removed.`, type: 'success' });
+  };
+
+  const handleBulkUpdateStatus = async (ids, newStatus) => {
+    const newEvent = { status: newStatus, date: new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }), desc: `Bulk status update to ${newStatus} by Admin.` };
+    
+    setPosts(posts.map(p => {
+      if (ids.includes(p.id)) {
+        return { ...p, status: newStatus, timeline: [...(p.timeline || []), newEvent] };
+      }
+      return p;
+    }));
+
+    logAdminAction(`Bulk updated status to '${newStatus}' for ${ids.length} posts.`);
+    setToast({ message: `Updated ${ids.length} posts to ${newStatus}`, type: 'success' });
+  };
+
+  const handleVerifyPost = async (id) => {
+    const newEvent = { status: 'Verified', date: new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }), desc: 'Verified by Admin.' };
+
     setPosts(posts.map(p => {
       if (p.id === id) {
         return { 
           ...p, 
           status: 'Verified', 
           badges: [...(p.badges || []), 'Verified'],
-          timeline: [...(p.timeline || []), { status: 'Verified', date: 'Just now', desc: 'Verified by Admin.' }]
+          timeline: [...(p.timeline || []), newEvent]
         };
       }
       return p;
     }));
+
+    if (user?.role === 'admin') {
+      try {
+        await verifyReportAdmin({ adminUserId: user.id, reportId: id });
+      } catch (err) {
+        console.error(err);
+        setToast({ message: err?.message || 'Failed to verify report in backend.', type: 'error' });
+      }
+    } else {
+      await updateReport(id, { status: 'Verified' }).catch(console.error);
+    }
+
+    logAdminAction(`Verified post with ID #${id}.`);
     setToast({ message: 'Post verified.', type: 'success' });
   };
 
-  const handleResolvePost = (id) => {
-    // In a real app, this would open a modal to upload an image.
-    const afterPhotoUrl = window.prompt("Enter 'After' photo URL to mark resolved (Required):", "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&q=80&w=400");
-    if (!afterPhotoUrl) return;
+  const handleResolvePost = async (id) => {
+    const afterPhotoUrl = "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&q=80&w=400";
+    const targetPost = posts.find((p) => p.id === id);
+    
+    const newEvent = { status: 'Resolved', date: new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }), desc: 'Issue resolved and verified with photographic evidence.' };
 
     setPosts(posts.map(p => {
       if (p.id === id) {
         return { 
           ...p, 
           status: 'Resolved', 
-          evidence: { ...p.evidence, after: afterPhotoUrl, before: p.evidence?.before || 'https://images.unsplash.com/photo-1580674684081-7617fbf3d745?auto=format&fit=crop&q=80&w=400' }, // Ensure before exists for demo
-          timeline: [...(p.timeline || []), { status: 'Resolved', date: 'Just now', desc: 'Issue resolved and verified with photographic evidence.' }]
+          evidence: { ...p.evidence, after: afterPhotoUrl, before: p.evidence?.before || 'https://images.unsplash.com/photo-1580674684081-7617fbf3d745?auto=format&fit=crop&q=80&w=400' },
+          timeline: [...(p.timeline || []), newEvent]
         };
       }
       return p;
     }));
+
+    
+    if (user?.role === 'admin') {
+      try {
+        await resolveReportAdmin({ adminUserId: user.id, reportId: id, afterImageUrl: afterPhotoUrl });
+      } catch (err) {
+        console.error(err);
+        setToast({ message: err?.message || 'Failed to resolve report in backend.', type: 'error' });
+      }
+    } else {
+      await updateReport(id, { status: 'Resolved', image_url: afterPhotoUrl }).catch(console.error);
+    }
+
+    if (targetPost?.authorId && targetPost.authorId !== 'anon') {
+      await awardPoints(targetPost.authorId, 50);
+    }
+
+    logAdminAction(`Resolved post with ID #${id}.`);
     setToast({ message: 'Issue resolved and Impact Card generated!', type: 'success' });
   };
 
-  const handleDismissFlag = (id) => {
+  const handleBanUser = async (userId) => {
+    let userName = '';
+    let newStatus = '';
+    setAllUsers(prev => prev.map(u => {
+      if (u.id === userId) {
+        userName = u.name;
+        newStatus = u.status === 'banned' ? 'active' : 'banned';
+        return { ...u, status: newStatus };
+      }
+      return u;
+    }));
+
+    if (user?.role === 'admin' && newStatus) {
+      try {
+        await updateUserStatusAdmin({ adminUserId: user.id, userId, status: newStatus });
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    logAdminAction(`${newStatus === 'banned' ? 'Banned' : 'Unbanned'} user: ${userName} (ID: ${userId}).`);
+    setToast({ message: 'User status updated', type: 'success' });
+  };
+
+  const handleBulkBanUser = async (ids) => {
+    setAllUsers(prev => prev.map(u => ids.includes(u.id) ? { ...u, status: 'banned' } : u));
+    if (user?.role === 'admin') {
+      await Promise.all(ids.map((id) => updateUserStatusAdmin({ adminUserId: user.id, userId: id, status: 'banned' }).catch(console.error)));
+    }
+    logAdminAction(`Bulk banned ${ids.length} users.`);
+    setToast({ message: `${ids.length} users banned.`, type: 'success' });
+  };
+
+  const handleAdminEditPost = async (postToEdit) => {
+    const newTitle = prompt("Enter new title:", postToEdit.title);
+    if (newTitle) {
+      setPosts(prev => prev.map(p => p.id === postToEdit.id ? { ...p, title: newTitle } : p));
+
+      logAdminAction(`Edited post title for ID #${postToEdit.id}.`);
+      setToast({ message: 'Post updated by Admin', type: 'success' });
+    }
+  };
+
+  const handleUpdateSettings = (newSettings) => {
+    setSystemSettings(newSettings);
+    logAdminAction(`Updated system settings.`);
+    setToast({ message: 'System settings saved', type: 'success' });
+  };
+
+  const handleVerifyChapter = async (chapterId) => {
+    // Optimistic update
+    setChapters(prev => prev.map(c => c.id === chapterId ? { ...c, verified: true } : c));
+    setToast({ message: 'Chapter verified successfully', type: 'success' });
+    logAdminAction(`Verified chapter ID #${chapterId}.`);
+  };
+
+  const handleDeleteChapter = async (chapterId) => {
+    setChapters(prev => prev.filter(c => c.id !== chapterId));
+    setToast({ message: 'Chapter removed', type: 'success' });
+    logAdminAction(`Deleted chapter ID #${chapterId}.`);
+  };
+
+  const handleDismissFlag = async (id) => {
     setPosts(posts.map(p => p.id === id ? { ...p, flags: 0 } : p));
+
     setToast({ message: 'Flags dismissed.', type: 'success' });
+    logAdminAction(`Dismissed flags for post ID #${id}.`);
   };
 
   const handleSubscribe = () => {
      if(!selectedCity) return;
+     if (!user) { setToast({ message: 'Please login to manage alerts.', type: 'error' }); return; }
      if(subscribedCities.includes(selectedCity)) {
         setSubscribedCities(prev => prev.filter(c => c !== selectedCity));
+        if (user?.id) {
+          unsubscribeAlerts({ userId: user.id, city: selectedCity }).catch(console.error);
+        }
         setToast({ message: `Unsubscribed from ${selectedCity}.`, type: 'success' });
      } else {
         setSubscribedCities(prev => [...prev, selectedCity]);
+        if (user?.id) {
+          subscribeAlerts({ userId: user.id, city: selectedCity, categories: ['all'], channels: ['in_app', 'email'] }).catch(console.error);
+        }
         setToast({ message: `Alerts active for ${selectedCity}!`, type: 'success' });
      }
   };
@@ -3757,7 +5644,8 @@ export default function App() {
       filtered = posts.filter(p => p.city === selectedCity);
     }
     // Filter out posts with high flags for regular view (Auto-Moderation)
-    return filtered.filter(p => p.flags < 3);
+    // Only show posts that have been verified/approved (status is not 'Open')
+    return filtered.filter(p => p.flags < 3 && p.status !== 'Open');
   }, [posts, view, selectedCity]);
 
   // Derived filtered list for Home View
@@ -3766,28 +5654,28 @@ export default function App() {
     if (homeCityFilter !== 'All') {
       list = list.filter(p => p.city === homeCityFilter);
     }
-    return list.slice(0, 3);
+    return list.slice(0, 6);
   }, [feedPosts, homeCityFilter]);
 
   const renderContent = () => {
     switch(view) {
       case 'login':
-        return <LoginScreen onLogin={performLogin} onBack={() => navigate('home')} onSignUpClick={() => navigate('signup')} />;
+        return <LoginScreen onAuthSuccess={handleAuthSuccess} onBack={() => navigate('home')} onSignUpClick={() => navigate('signup')} />;
 
       case 'signup':
-        return <SignUpScreen onSignUp={performLogin} onBack={() => navigate('login')} />;
+        return <SignUpScreen onAuthSuccess={handleRegisterUser} onBack={() => navigate('login')} />;
 
       case 'dashboard':
-        return user ? <UserDashboard user={user} posts={posts} onViewChange={navigate} onLogout={handleLogout} onUpdateUser={handleUpdateProfile} onSimulateAlert={handleSimulateAlert} /> : <LoginScreen onLogin={performLogin} onBack={() => navigate('home')} onSignUpClick={() => navigate('signup')} />;
+        return user ? <UserDashboard user={user} posts={posts} onViewChange={navigate} onLogout={handleLogout} onUpdateUser={handleUpdateProfile} onSimulateAlert={handleSimulateAlert} /> : <LoginScreen onAuthSuccess={handleAuthSuccess} onBack={() => navigate('home')} onSignUpClick={() => navigate('signup')} />;
 
       case 'edit-profile':
-        return user ? <EditProfile user={user} onSave={handleUpdateProfile} onCancel={() => navigate('dashboard')} /> : <LoginScreen onLogin={performLogin} onBack={() => navigate('home')} onSignUpClick={() => navigate('signup')} />;
+        return user ? <EditProfile user={user} onSave={handleUpdateProfile} onCancel={() => navigate('dashboard')} /> : <LoginScreen onAuthSuccess={handleAuthSuccess} onBack={() => navigate('home')} onSignUpClick={() => navigate('signup')} />;
 
       case 'home':
         return (
           <>
             <Hero onViewChange={navigate} />
-            <div className="max-w-[980px] mx-auto px-6 py-12">
+            <div className="max-w-245 mx-auto px-6 py-12">
                <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
                  <div>
                     <h2 className="text-2xl font-semibold text-[#1d1d1f]">Trending Issues <FeatureInfo title="Trending Feed" content="These are the most active issues in your area. They are sorted by severity and community engagement (upvotes/vouches)." /></h2>
@@ -3832,9 +5720,10 @@ export default function App() {
                       post={post} 
                       onClick={(p) => navigate('post', { post: p })} 
                       onVolunteer={handleVolunteer} 
-                      onShare={setSharePost} 
-                      onVouch={handleVouch}
+                      onShare={setSharePost}
                       onFlag={handleFlag}
+                      onLike={handleLike}
+                      onEdit={handleEditPostClick}
                       currentUser={user}
                     />
                  )) : (
@@ -3851,21 +5740,21 @@ export default function App() {
             </div>
             <HeroOfTheWeek />
             <HowItWorks />
-            <ImpactWall posts={posts} onViewChange={navigate} />
-            <ChaptersPromo onViewChange={navigate} chapters={chapters} />
+            <ImpactWall posts={posts} onViewChange={navigate} onLike={handleLike} />
+            <ChaptersPromo onViewChange={navigate} />
             <SmartAlertsPromo onViewChange={navigate} user={user} />
             <MotivationSection onViewChange={navigate} />
           </>
         );
       
       case 'explore':
-        return <Explore onCitySelect={(city) => navigate('city', { city })} />;
+        return <Explore onCitySelect={(city) => navigate('city', { city })} posts={posts} user={user} />;
 
       case 'chapters':
-        return <Chapters chapters={chapters} onJoin={handleJoinChapter} />;
+        return <Chapters chapters={chapters} onJoin={handleJoinChapter} onRegister={handleRegisterChapter} user={user} myChapterIds={myChapterIds} />;
 
       case 'leaderboard':
-        return <Leaderboard currentUser={user} onBack={() => navigate('home')} chapters={chapters} />;
+        return <Leaderboard onBack={() => navigate('home')} />;
 
       case 'resources':
         return <CivicResourcesPage />;
@@ -3873,7 +5762,7 @@ export default function App() {
       case 'impact':
         return <ImpactGalleryPage posts={posts} />;
 
-      case 'city':
+      case 'city': {
         const isSubscribed = subscribedCities.includes(selectedCity);
         const stats = { scams: 12, resolved: 45, volunteers: 120 };
 
@@ -3921,8 +5810,9 @@ export default function App() {
                     onClick={(p) => navigate('post', { post: p })} 
                     onVolunteer={handleVolunteer} 
                     onShare={setSharePost}
-                    onVouch={handleVouch}
                     onFlag={handleFlag}
+                    onLike={handleLike}
+                    onEdit={handleEditPostClick}
                     currentUser={user}
                   />
                 ))}
@@ -3936,20 +5826,20 @@ export default function App() {
             </div>
 
             <div className="lg:w-1/3 space-y-6">
-              <div className="bg-gradient-to-br from-indigo-50 to-blue-50 p-6 rounded-2xl border border-blue-100">
+              <div className="bg-linear-to-br from-indigo-50 to-blue-50 p-6 rounded-2xl border border-blue-100">
                 <h3 className="font-bold text-indigo-900 text-lg mb-2">College Chapters</h3>
                 <p className="text-indigo-700 text-sm mb-4">Start a student unit in {selectedCity}.</p>
-                <Button variant="primary" className="w-full bg-indigo-600 hover:bg-indigo-700 border-none">Register Unit</Button>
+                <Button variant="primary" className="w-full bg-indigo-600 hover:bg-indigo-700 border-none" onClick={() => navigate('chapters')}>Register Unit</Button>
               </div>
 
               <div className="bg-white p-6 rounded-2xl border border-gray-200">
                 <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><FileText size={18} /> Resources</h3>
                 <ul className="space-y-3">
-                   {RESOURCES.map((r, i) => (
-                      <li key={i} className="group cursor-pointer">
-                         <div className="flex items-center justify-between text-sm font-medium text-gray-700 group-hover:text-blue-600">
+                   {resourceLinks.map((r, i) => (
+                      <li key={i} className="group">
+                         <a href={r.link} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between text-sm font-medium text-gray-700 group-hover:text-blue-600">
                             {r.title} <ExternalLink size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
-                         </div>
+                         </a>
                          <p className="text-xs text-gray-500">{r.desc}</p>
                       </li>
                    ))}
@@ -3958,88 +5848,321 @@ export default function App() {
             </div>
           </div>
         );
+      }
 
       case 'create':
-        return <CreatePost onBack={() => navigate('home')} onSubmit={handleCreatePost} />;
+        return <CreatePost key={editingPost?.id || 'new'} onBack={() => { setEditingPost(null); navigate('home'); }} onSubmit={handleSavePost} initialData={editingPost} />;
       
       case 'admin':
-        return <AdminDashboard posts={posts} onDelete={handleDeletePost} onVerify={handleVerifyPost} onDismissFlag={handleDismissFlag} onResolve={handleResolvePost} />;
+        // Edge Case: Verify admin role before rendering dashboard
+        if (user?.role !== 'admin') {
+          return (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
+              <Shield size={64} className="text-gray-300 mb-4" />
+              <h2 className="text-2xl font-bold text-gray-900">Access Restricted</h2>
+              <p className="text-gray-500 mb-6 max-w-md">This area is reserved for administrators. Please return to the main site.</p>
+              <Button variant="primary" onClick={() => navigate('home')}>Go Home</Button>
+            </div>
+          );
+        }
+        return (
+          <AdminDashboard 
+            posts={posts} 
+            users={allUsers}
+            settings={systemSettings}
+            auditLog={auditLog}
+            chapters={chapters}
+            onDelete={handleDeletePost} 
+            onVerify={handleVerifyPost} 
+            onDismissFlag={handleDismissFlag} 
+            onResolve={handleResolvePost}
+            onEditPost={handleAdminEditPost}
+            onBanUser={handleBanUser}
+            onVerifyChapter={handleVerifyChapter}
+            onDeleteChapter={handleDeleteChapter}
+            onUpdateSettings={handleUpdateSettings}
+            onBulkDelete={handleBulkDeletePosts}
+            onBulkUpdateStatus={handleBulkUpdateStatus}
+            onBulkBan={handleBulkBanUser}
+          />
+        );
 
       case 'post':
         return selectedPost && (
-          <div className="max-w-3xl mx-auto px-4 py-8">
-            <button onClick={() => navigate('home')} className="flex items-center gap-2 text-gray-500 mb-6 hover:text-gray-900 transition-colors">
-              <ArrowLeft size={18} /> Back
+          <div className="max-w-6xl mx-auto px-4 py-8">
+            {/* Navigation */}
+            <button onClick={() => navigate('home')} className="flex items-center gap-2 text-gray-500 mb-6 hover:text-gray-900 transition-colors font-medium">
+              <ArrowLeft size={20} /> Back to Feed
             </button>
-            <PostCard 
-              post={selectedPost} 
-              onClick={() => {}} 
-              onVolunteer={handleVolunteer} 
-              onShare={setSharePost} 
-              onVouch={handleVouch} 
-              onFlag={handleFlag}
-              currentUser={user}
-            />
-            
-            {/* Participants / Heroes Section */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
-               <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                 <Users size={18} className="text-blue-600" />
-                 Community Heroes
-               </h3>
-               <div className="flex items-center gap-4">
-                  <div className="flex -space-x-3">
-                     {/* Mock participants based on upvotes/volunteers */}
-                     {[...Array(Math.min(5, (selectedPost.volunteers?.length || 0) + 2))].map((_, i) => (
-                       <div key={i} className="w-10 h-10 rounded-full border-2 border-white bg-gradient-to-br from-gray-100 to-gray-300 flex items-center justify-center text-xs font-bold text-gray-600" title={`User ${i+1}`}>
-                          {String.fromCharCode(65 + i)}
-                       </div>
-                     ))}
-                     <div className="w-10 h-10 rounded-full border-2 border-white bg-blue-50 flex items-center justify-center text-xs font-bold text-blue-600">
-                       +{selectedPost.upvotes}
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Left Column: Main Content */}
+              <div className="lg:col-span-2 space-y-8">
+                
+                {/* Main Post Card (Customized for Detail View) */}
+                <div className="bg-white rounded-[30px] shadow-sm border border-gray-100 overflow-hidden">
+                  {/* Header Image / Map Placeholder / Category Banner */}
+                  <div className="relative h-48 bg-linear-to-r from-blue-600 to-indigo-700 p-8 text-white flex flex-col justify-end">
+                     <div className="absolute top-0 right-0 p-6 opacity-10">
+                        {selectedPost.type === 'volunteer' ? <Users size={120} /> : <AlertTriangle size={120} />}
+                     </div>
+                     <div className="relative z-10">
+                        <div className="flex items-center gap-3 mb-2">
+                           <Badge className="bg-white/20 text-white border-none backdrop-blur-md">{selectedPost.type.toUpperCase()}</Badge>
+                           <span className="text-blue-100 text-sm flex items-center gap-1"><Clock size={14}/> {selectedPost.date}</span>
+                        </div>
+                        <h1 className="text-3xl font-bold leading-tight">{selectedPost.title}</h1>
                      </div>
                   </div>
-                  <div className="text-sm text-gray-500">
-                    <span className="font-bold text-gray-900">{selectedPost.upvotes + (selectedPost.volunteers?.length || 0)} citizens</span> participated in this change.
-                  </div>
-               </div>
-               {selectedPost.isVolunteerDrive && (
-                 <div className="mt-4 pt-4 border-t border-gray-50">
-                    <div className="flex justify-between text-sm">
-                       <span className="text-gray-500">Drive Status:</span>
-                       <span className={`font-bold ${selectedPost.status === 'Resolved' ? 'text-green-600' : 'text-blue-600'}`}>
-                         {selectedPost.status === 'Resolved' ? 'Completed Successfully' : 'Active - Join Now'}
-                       </span>
-                    </div>
-                 </div>
-               )}
-            </div>
 
-            {/* NEW: Timeline with Update Feature */}
-            <PostTimeline 
-              timeline={selectedPost.timeline} 
-              canUpdate={user && user.id === selectedPost.authorId}
-              onAddUpdate={(text) => handleAddTimelineUpdate(selectedPost.id, text)}
-            />
-
-            <div className="mt-8 bg-gray-50 rounded-2xl p-6 border border-gray-200">
-              <h3 className="text-lg font-bold mb-4">Discussion</h3>
-              <div className="space-y-4">
-                {selectedPost.comments.length > 0 ? selectedPost.comments.map(c => (
-                  <div key={c.id} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-                    <div className="font-medium text-sm text-gray-900 mb-1 flex items-center gap-2">
-                       {c.author} {c.author === 'Admin' && <Badge className="bg-blue-100 text-blue-700">MOD</Badge>}
+                  <div className="p-8">
+                    {/* Author Info */}
+                    <div className="flex items-center justify-between mb-6">
+                       <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center font-bold text-gray-600">
+                             {(selectedPost.type === 'bribe' || selectedPost.type === 'scam') ? 'A' : selectedPost.author.charAt(0)}
+                          </div>
+                          <div>
+                             <div className="font-bold text-gray-900">{(selectedPost.type === 'bribe' || selectedPost.type === 'scam') ? 'Anonymous Citizen' : selectedPost.author}</div>
+                             <div className="text-xs text-gray-500 flex items-center gap-1"><MapPin size={12}/> {selectedPost.location}</div>
+                          </div>
+                       </div>
+                       <div className="flex gap-2">
+                          <button onClick={() => setSharePost(selectedPost)} className="p-2 text-gray-400 hover:bg-gray-50 rounded-full transition-colors"><Share2 size={20}/></button>
+                          <button onClick={() => handleFlag(selectedPost.id)} className="p-2 text-gray-400 hover:bg-red-50 hover:text-red-500 rounded-full transition-colors"><Flag size={20}/></button>
+                       </div>
                     </div>
-                    <p className="text-sm text-gray-600">{c.text}</p>
+
+                    {/* Description */}
+                    <p className="text-gray-700 text-lg leading-relaxed mb-8 whitespace-pre-wrap">
+                       {selectedPost.description}
+                    </p>
+
+                    {/* Evidence / Images */}
+                    {selectedPost.evidence && (
+                       <div className="grid grid-cols-2 gap-4 mb-8">
+                          {selectedPost.evidence.before && (
+                             <div className="space-y-2">
+                                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Before</span>
+                                <img src={selectedPost.evidence.before} alt="Before" className="w-full h-48 object-cover rounded-2xl border border-gray-100" />
+                             </div>
+                          )}
+                          {selectedPost.evidence.after && (
+                             <div className="space-y-2">
+                                <span className="text-xs font-bold text-green-600 uppercase tracking-wider">After (Resolved)</span>
+                                <img src={selectedPost.evidence.after} alt="After" className="w-full h-48 object-cover rounded-2xl border border-green-100 ring-2 ring-green-50" />
+                             </div>
+                          )}
+                       </div>
+                    )}
+
+                    {/* Action Bar */}
+                    <div className="flex items-center justify-between pt-6 border-t border-gray-100">
+                       <div className="flex gap-4">
+                          <button 
+                            onClick={() => handleLike(selectedPost.id)}
+                            className="flex items-center gap-2 px-4 py-2 rounded-full bg-gray-50 hover:bg-blue-50 text-gray-600 hover:text-blue-600 transition-colors font-medium"
+                          >
+                             <ThumbsUp size={18} /> {selectedPost.upvotes} Support
+                          </button>
+                          <button 
+                            onClick={() => handleVouch(selectedPost.id)}
+                            className="flex items-center gap-2 px-4 py-2 rounded-full bg-gray-50 hover:bg-green-50 text-gray-600 hover:text-green-600 transition-colors font-medium"
+                          >
+                             <CheckCircle size={18} /> {selectedPost.vouchCount} Verify
+                          </button>
+                       </div>
+                       {user && user.id === selectedPost.authorId && (
+                          <Button variant="outline" onClick={() => handleEditPostClick(selectedPost)} icon={Edit} className="py-2!">Edit Post</Button>
+                       )}
+                    </div>
                   </div>
-                )) : <p className="text-gray-500 italic text-sm">No comments yet.</p>}
-              </div>
-              <div className="mt-6 flex gap-3">
-                <div className="w-8 h-8 rounded-full bg-gray-200 shrink-0"></div>
-                <div className="flex-1 relative">
-                  <input type="text" placeholder="Add a comment..." className="w-full bg-white border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                  <button className="absolute right-2 top-1.5 text-blue-600 text-xs font-bold p-1 hover:bg-blue-50 rounded">POST</button>
                 </div>
+
+                {/* Timeline */}
+                <PostTimeline 
+                  timeline={selectedPost.timeline} 
+                  canUpdate={user && user.id === selectedPost.authorId}
+                  onAddUpdate={(text) => handleAddTimelineUpdate(selectedPost.id, text)}
+                />
+
+                {/* Discussion */}
+                <div className="bg-white rounded-[30px] shadow-sm border border-gray-100 p-8">
+                  <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+                     <MessageCircle size={20} className="text-blue-600"/> Discussion ({totalComments})
+                  </h3>
+                  
+                  {/* Comment Input */}
+                  <div className="flex gap-4 mb-8">
+                     <div className="w-10 h-10 rounded-full bg-gray-200 shrink-0 flex items-center justify-center font-bold text-gray-500">
+                        {user ? user.name.charAt(0) : '?'}
+                     </div>
+                     <div className="flex-1">
+                        <div className="relative">
+                           <textarea 
+                              className="w-full p-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-blue-100 outline-none resize-none text-sm"
+                              placeholder="Add to the discussion..."
+                              rows={3}
+                              value={commentText}
+                              onChange={(e) => setCommentText(e.target.value)}
+                           />
+                           <div className="absolute bottom-3 right-3 flex items-center gap-3">
+                              <span className={`text-xs ${commentText.length > MAX_COMMENT_LENGTH ? 'text-red-500' : 'text-gray-400'}`}>
+                                 {commentText.length}/{MAX_COMMENT_LENGTH}
+                              </span>
+                              <button 
+                                 onClick={() => handlePostComment(commentText)}
+                                 disabled={!commentText.trim() || commentText.length > MAX_COMMENT_LENGTH}
+                                 className="bg-blue-600 text-white p-2 rounded-full hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                              >
+                                 <ArrowLeft size={16} className="rotate-180" />
+                              </button>
+                           </div>
+                        </div>
+                     </div>
+                  </div>
+
+                  {/* Comments List */}
+                  <div className="space-y-6">
+                     {commentTree.length > 0 ? commentTree.map(c => renderComment(c)) : (
+                        <div className="text-center py-8 text-gray-400 text-sm">No comments yet. Be the first to start the conversation.</div>
+                     )}
+                     {postComments.length < totalComments && (
+                        <button onClick={handleLoadMoreComments} className="w-full py-3 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-xl transition-colors">
+                           Load previous comments
+                        </button>
+                     )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column: Sidebar */}
+              <div className="space-y-6 sticky top-24 self-start">
+                
+                {/* Action Card (Volunteer Drive / Status) */}
+                {selectedPost.isVolunteerDrive ? (
+                   <div className="bg-white rounded-[30px] shadow-lg border border-blue-100 overflow-hidden">
+                      <div className="bg-blue-600 p-6 text-white text-center">
+                         <h3 className="font-bold text-lg mb-1">Volunteer Drive</h3>
+                         <p className="text-blue-100 text-sm">Join the community action</p>
+                      </div>
+                      <div className="p-6">
+                         <div className="flex items-center gap-4 mb-6">
+                            <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center shrink-0">
+                               <Calendar size={24} />
+                            </div>
+                            <div>
+                               <div className="text-sm text-gray-500 font-medium">Date & Time</div>
+                               <div className="font-bold text-gray-900">{selectedPost.eventDate}</div>
+                               <div className="text-sm text-gray-600">{selectedPost.eventTime}</div>
+                            </div>
+                         </div>
+                         
+                         <div className="flex items-center gap-4 mb-8">
+                            <div className="w-12 h-12 bg-orange-50 text-orange-600 rounded-2xl flex items-center justify-center shrink-0">
+                               <MapPin size={24} />
+                            </div>
+                            <div>
+                               <div className="text-sm text-gray-500 font-medium">Location</div>
+                               <div className="font-bold text-gray-900 line-clamp-1">{selectedPost.city}</div>
+                               <div className="text-sm text-blue-600 hover:underline cursor-pointer">View on Map</div>
+                            </div>
+                         </div>
+
+                         <Button 
+                           variant={selectedPost.status === 'Resolved' ? "secondary" : "primary"} 
+                           className="w-full py-4 text-base shadow-lg shadow-blue-200"
+                           onClick={() => handleVolunteer(selectedPost.id)}
+                           disabled={selectedPost.status === 'Resolved'}
+                         >
+                            {selectedPost.status === 'Resolved' ? 'Event Completed' : 
+                             selectedPost.volunteers?.includes(user?.id) ? 'You are Joining!' : 'Join Drive'}
+                         </Button>
+                         
+                         <p className="text-center text-xs text-gray-400 mt-4">
+                            {selectedPost.volunteers?.length || 0} people have joined this drive.
+                         </p>
+                      </div>
+                   </div>
+                ) : (
+                   <div className="bg-white rounded-[30px] shadow-sm border border-gray-100 p-6">
+                      <h3 className="font-bold text-gray-900 mb-4">Status</h3>
+                      <div className="flex items-center gap-3 mb-6">
+                         <div className={`w-3 h-3 rounded-full ${selectedPost.status === 'Resolved' ? 'bg-green-500' : 'bg-orange-500'} animate-pulse`}></div>
+                         <span className="font-medium text-gray-700">{selectedPost.status}</span>
+                      </div>
+                      <div className="space-y-3">
+                         <div className="flex justify-between text-sm">
+                            <span className="text-gray-500">Trust Score</span>
+                            <span className="font-bold text-gray-900">{selectedPost.trustScore}</span>
+                         </div>
+                         <div className="flex justify-between text-sm">
+                            <span className="text-gray-500">Verified By</span>
+                            <span className="font-bold text-gray-900">{selectedPost.vouchCount} Citizens</span>
+                         </div>
+                      </div>
+                   </div>
+                )}
+
+                {/* Actions: Subscribe & Share */}
+                <div className="bg-white rounded-[30px] shadow-sm border border-gray-100 p-6">
+                   <h3 className="font-bold text-gray-900 mb-4">Actions</h3>
+                   <div className="space-y-3">
+                      <button 
+                        onClick={() => setToast({ message: "Subscribed to updates for this issue.", type: 'success' })}
+                        className="w-full py-3 rounded-xl border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+                      >
+                         <Bell size={18} /> Subscribe to Updates
+                      </button>
+                      <button 
+                        onClick={() => {
+                           const text = `Check out this issue: ${selectedPost.title} in ${selectedPost.city}. #IndiaAct`;
+                           window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+                        }}
+                        className="w-full py-3 rounded-xl bg-[#25D366] text-white font-medium hover:bg-[#20bd5a] transition-colors flex items-center justify-center gap-2"
+                      >
+                         <MessageCircle size={18} /> Share on WhatsApp
+                      </button>
+                   </div>
+                </div>
+
+                {/* Similar Issues Nearby */}
+                <div className="bg-white rounded-[30px] shadow-sm border border-gray-100 p-6">
+                   <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                      <MapPin size={18} className="text-gray-500" /> Similar Issues Nearby
+                   </h3>
+                   <div className="space-y-4">
+                      {posts
+                        .filter(p => p.city === selectedPost.city && p.id !== selectedPost.id)
+                        .slice(0, 3)
+                        .map(post => (
+                         <div key={post.id} className="flex items-start gap-3 cursor-pointer group" onClick={() => navigate('post', { post })}>
+                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${post.status === 'Resolved' ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500'}`}>
+                               {post.status === 'Resolved' ? <CheckCircle size={16} /> : <AlertTriangle size={16} />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                               <div className="text-sm font-bold text-gray-900 truncate group-hover:text-blue-600 transition-colors">{post.title}</div>
+                               <div className="text-xs text-gray-500 flex items-center gap-1">
+                                  <span className="capitalize">{post.type}</span>
+                                  <span>•</span>
+                                  <span>{post.date}</span>
+                               </div>
+                            </div>
+                         </div>
+                      ))}
+                      {posts.filter(p => p.city === selectedPost.city && p.id !== selectedPost.id).length === 0 && (
+                        <div className="text-center py-4">
+                          <p className="text-sm text-gray-500 italic">No other reports in this area yet.</p>
+                        </div>
+                      )}
+                   </div>
+                   {posts.filter(p => p.city === selectedPost.city && p.id !== selectedPost.id).length > 0 && (
+                     <button onClick={() => navigate('explore')} className="w-full mt-4 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg font-medium transition-colors">
+                        View on Map
+                     </button>
+                   )}
+                </div>
+
               </div>
             </div>
           </div>
@@ -4049,23 +6172,43 @@ export default function App() {
     }
   };
 
+  if (appIsLoading) {
+    return (
+      <div className="fixed inset-0 flex flex-col items-center justify-center bg-gray-50 text-gray-400">
+        <div className="mb-2">
+          <BrandLogo size="lg" />
+        </div>
+        <Spinner />
+        <p className="text-sm mt-4">Loading civic data...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#f5f5f7] text-[#1d1d1f] font-sans selection:bg-blue-100">
-      <Navbar currentView={view} onViewChange={navigate} user={user} onLoginClick={() => navigate('login')} onLogout={handleLogout} notifications={notifications} showNotifications={showNotifications} setShowNotifications={setShowNotifications} />
+      <GlobalBanner message={systemSettings.globalAnnouncement} />
+      <Navbar currentView={view} onViewChange={navigate} user={user} onLoginClick={() => navigate('login')} notifications={notifications} showNotifications={showNotifications} setShowNotifications={setShowNotifications} />
       <main className="animate-fade-in">{renderContent()}</main>
       
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       {sharePost && <SharePosterModal post={sharePost} onClose={() => setSharePost(null)} />}
+      {showPrivacyPolicy && <PrivacyPolicyModal onClose={() => setShowPrivacyPolicy(false)} />}
       
       <footer className="bg-gray-50 border-t border-gray-200 py-12 mt-12">
         <div className="max-w-6xl mx-auto px-4 grid grid-cols-2 md:grid-cols-4 gap-8">
           <div>
-            <div className="font-bold text-gray-900 mb-4 flex items-center gap-2"><Shield size={16} /> IndiaAct</div>
+            <div className="mb-4">
+              <BrandLogo size="lg" />
+            </div>
             <p className="text-xs text-gray-500 leading-relaxed">Built for a better tomorrow. <br/>Join the civic revolution.</p>
           </div>
           <div>
             <div className="font-bold text-sm text-gray-900 mb-4">Platform</div>
-            <ul className="space-y-2 text-xs text-gray-500"><li>About Us</li><li>Guidelines</li><li>Privacy Policy</li></ul>
+            <ul className="space-y-2 text-xs text-gray-500">
+              <li>About Us</li>
+              <li>Guidelines</li>
+              <li><button onClick={() => setShowPrivacyPolicy(true)} className="hover:text-gray-900">Privacy Policy</button></li>
+            </ul>
           </div>
           <div>
             <div className="font-bold text-sm text-gray-900 mb-4">Connect</div>
@@ -4076,3 +6219,4 @@ export default function App() {
     </div>
   );
 }
+ 
